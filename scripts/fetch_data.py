@@ -55,6 +55,23 @@ def main():
 
     ZOOM_WORDS = ("zoom", "online", "virtual", "livestream", "live stream")
 
+    # Power Team sponsors (from RPM-Power-Team-Directory) - flagged so the
+    # dashboard doesn't count them as loyalist attendees
+    SPONSOR_EMAILS = {
+        "dean@ramsayandwhite.com", "kate@simplyseven.co.uk",
+        "info@bowersbrokerservices.co.uk", "sgillbe@setfords.co.uk",
+        "des.taylor@landlordsdefence.co.uk", "emily.temple@etplanning.co.uk",
+        "info@ksmremedial.co.uk", "stuart@stanleyelectricalservices.com",
+        "info@jpfiresecurity.co.uk", "info@voilasolutions.co.uk",
+        "martin.duncan5@btinternet.com",
+    }
+    SPONSOR_NAMES = {
+        "dean cripps", "kate hulcoop-allen", "katie hulcoop-allen", "katie allen",
+        "martin bowers", "sarah gillbe", "des taylor", "desmond taylor",
+        "emily temple", "steve long", "stuart stanley", "jason povey",
+        "daniel norquoy", "martin duncan",
+    }
+
     def fetch_event_orders(eid):
         # richer expansion first (promo codes); fall back if the API rejects it
         for expand in ("attendees,attendees.promotional_code", "attendees"):
@@ -86,15 +103,19 @@ def main():
                 if not city:
                     home = ((a.get("profile") or {}).get("addresses") or {}).get("home") or {}
                     city = home.get("city") or ""
+            email = (o.get("email") or "").strip().lower()
+            fullname = f"{(o.get('first_name') or '').strip()} {(o.get('last_name') or '').strip()}".strip().lower()
+            sponsor = (email in SPONSOR_EMAILS or fullname in SPONSOR_NAMES
+                       or code.lower().startswith("sponsor"))
             orders.append({
                 "oid": o["id"],
                 "dt": o["created"][:19].replace("T", " "),
                 "first": (o.get("first_name") or "").strip(),
                 "last": (o.get("last_name") or "").strip(),
-                "email": (o.get("email") or "").strip().lower(),
+                "email": email,
                 "city": city,
                 "eid": eid, "edate": edate, "ename": ename,
-                "qty": qty, "zoom": zoom, "code": code,
+                "qty": qty, "zoom": zoom, "code": code, "sp": 1 if sponsor else 0,
                 "status": "Free Order" if gross == 0 else "Eventbrite Completed",
                 "gross": round(gross, 2), "net": net,
             })
