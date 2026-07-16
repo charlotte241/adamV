@@ -57,6 +57,19 @@ def main():
 
     # Power Team sponsors (from RPM-Power-Team-Directory) - flagged so the
     # dashboard doesn't count them as loyalist attendees
+    SPONSOR_DIRECTORY = [
+        {"name": "Dean Cripps", "biz": "Ramsay & White", "cat": "Mortgage & Finance Broker"},
+        {"name": "Kate Hulcoop-Allen", "biz": "Simply Seven", "cat": "Bookkeeping & Xero"},
+        {"name": "Martin Bowers", "biz": "Bowers Broker Services", "cat": "Property Insurance Broker"},
+        {"name": "Sarah Gillbe", "biz": "Setfords Solicitors", "cat": "Property Solicitor"},
+        {"name": "Des Taylor", "biz": "Landlords Defence", "cat": "Licensing & Defence"},
+        {"name": "Emily Temple", "biz": "ET Planning", "cat": "Town Planning Consultant"},
+        {"name": "Steve Long", "biz": "KSM Remedial", "cat": "Builder & Damp Specialist"},
+        {"name": "Stuart Stanley", "biz": "Stanley Electrical", "cat": "Electrician (NICEIC)"},
+        {"name": "Jason Povey", "biz": "JP Fire & Security", "cat": "Fire & Security"},
+        {"name": "Daniel Norquoy", "biz": "Voila Solutions", "cat": "Virtual Assistants"},
+        {"name": "Martin Duncan", "biz": "Waste Clearance & Removals", "cat": "Waste & Clearance"},
+    ]
     SPONSOR_EMAILS = {
         "dean@ramsayandwhite.com", "kate@simplyseven.co.uk",
         "info@bowersbrokerservices.co.uk", "sgillbe@setfords.co.uk",
@@ -133,6 +146,7 @@ def main():
             o["email"] = mapping[o["email"]]
 
     out = {"snapshot": dt.datetime.utcnow().isoformat(timespec="minutes"),
+           "sponsors": SPONSOR_DIRECTORY,
            "orders": orders}
     with open("data.json", "w") as f:
         json.dump(out, f, separators=(",", ":"))
