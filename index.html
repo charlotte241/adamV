@@ -459,14 +459,22 @@ chipsEl.querySelectorAll("button").forEach(btn=>btn.onclick=()=>{
 document.getElementById("atSearch").oninput = ()=>atT.redraw(atFiltered());
 
 // ---------- purchase log ----------
-const LOG = ORDERS.map(o=>({...o,buyer:(o.first+" "+o.last).trim()}));
+// translate Eventbrite internal channel tags into readable sources; anything unrecognised = a real promo code
+const EB_TAGS = {ebdssbdestsearch:"EB search",ebesessearch:"EB search",ebdssbsearch:"EB search",ebdshpsearch:"EB search",
+  ebdssbcitybrowse:"EB browse",ebdsoporgprofile:"EB organiser page",ebesesdeeplink:"EB link",
+  eand:"EB app (Android)",eios:"EB app (iOS)",ebapi:"EB widget/API",boxoffice:"Box office",
+  erelconmlt:"EB related events",erelexpmlt:"EB related events",erellivmlt:"EB related events",erelpanelorg:"EB related events",
+  ebemoffollow:"EB follower email",oddtdtcreator:"Shared link",escb:"Embedded checkout",ebdsshother:"Social share",
+  ebcsneweventemail:"EB new-event email",odcleoeventsincollection:"EB collection"};
+const srcOf = c => { if(!c) return ["",false]; const m = EB_TAGS[c.toLowerCase()]; return m ? [m,false] : [c,true]; };
+const LOG = ORDERS.map(o=>{const [src,promo]=srcOf(o.code); return {...o,buyer:(o.first+" "+o.last).trim(),src,promo};});
 const logCols = [
   {k:"dt",h:"When",fmt:r=>fmtDT(r.dt)},
   {k:"buyer",h:"Buyer",fmt:r=>`<b>${esc(r.buyer)}</b>`},
   {k:"ename",h:"Event",fmt:r=>esc(shortName(r.ename))},
   {k:"qty",h:"Qty",num:1,fmt:r=>r.zoom?`${r.qty} <span class="badge b-ret">ZOOM${r.zoom>1?" ×"+r.zoom:""}</span>`:r.qty},
   {k:"gross",h:"Gross",num:1,fmt:r=>gbp2(r.gross)},
-  {k:"code",h:"Source",fmt:r=>r.code?`<span class="badge b-loyal">${esc(r.code)}</span>`:'<span style="color:var(--muted)">—</span>'},
+  {k:"src",h:"Source",fmt:r=>r.src?(r.promo?`<span class="badge b-loyal">${esc(r.src)}</span>`:`<span class="badge b-ret">${esc(r.src)}</span>`):'<span style="color:var(--muted)">—</span>'},
   {k:"status",h:"Status",fmt:r=>r.status==="Free Order"?'<span class="badge b-wait">FREE</span>':'<span class="badge b-good">PAID</span>'}
 ];
 const sel = document.getElementById("logEvent");
