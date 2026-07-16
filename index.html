@@ -464,7 +464,7 @@ const EB_TAGS = {ebdssbdestsearch:"EB search",ebesessearch:"EB search",ebdssbsea
   ebdssbcitybrowse:"EB browse",ebdsoporgprofile:"EB organiser page",ebesesdeeplink:"EB link",
   eand:"EB app (Android)",eios:"EB app (iOS)",ebapi:"EB widget/API",boxoffice:"Box office",
   erelconmlt:"EB related events",erelexpmlt:"EB related events",erellivmlt:"EB related events",erelpanelorg:"EB related events",
-  ebemoffollow:"EB follower email",oddtdtcreator:"Shared link",escb:"Embedded checkout",ebdsshother:"Social share",
+  ebemoffollow:"EB follower email",oddtdtcreator:"Shared link",oddtdtdirect:"Shared link",escb:"Embedded checkout",ebdsshother:"Social share",
   ebcsneweventemail:"EB new-event email",odcleoeventsincollection:"EB collection"};
 const srcOf = c => { if(!c) return ["",false]; const m = EB_TAGS[c.toLowerCase()]; return m ? [m,false] : [c,true]; };
 const LOG = ORDERS.map(o=>{const [src,promo]=srcOf(o.code); return {...o,buyer:(o.first+" "+o.last).trim(),src,promo};});
