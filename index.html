@@ -432,24 +432,34 @@ ORDERS.forEach(o=>{
   if(o.eid===CURRENT_EID) b.jul=true;
   if(NEXT_EID && o.eid===NEXT_EID) b.aug=true;
 });
-const AT = Object.values(buyers).map(b=>({...b,n:b.events.size}));
+let AT = Object.values(buyers).map(b=>({...b,n:b.events.size}));
+// merge in Power Team directory members who never book via Eventbrite (comp entry)
+const SPONSOR_DIR = DATA.sponsors || [];
+const atNames = new Set(AT.filter(b=>b.sp).map(b=>b.name.toLowerCase()));
+const nameAlias = {"kate hulcoop-allen":["katie allen","katie hulcoop-allen"]};
+SPONSOR_DIR.forEach(s=>{
+  const variants = [s.name.toLowerCase(), ...(nameAlias[s.name.toLowerCase()]||[])];
+  if(variants.some(v=>atNames.has(v))) return;   // already in via ticket data
+  AT.push({email:"", name:s.name, city:s.biz, events:new Set(), tix:0, gross:0, last:"", jul:false, aug:false, sp:true, n:0, dirOnly:true});
+});
 const gen = AT.filter(b=>!b.sp);   // genuine attendees, sponsors excluded from tiers
 const tiers = {loyal:gen.filter(b=>b.n>=5).length, reg:gen.filter(b=>b.n===3||b.n===4).length, ret:gen.filter(b=>b.n===2).length, sp:AT.filter(b=>b.sp).length};
 fillCards("atCards",[
-  {k:"Unique buyers", n:AT.length, col:"steel", d:"every monthly RPM ever"},
+  {k:"Unique buyers", n:AT.filter(b=>!b.dirOnly).length, col:"steel", d:"every monthly RPM ever"},
   {k:"Loyalists (5+)", n:tiers.loyal, col:"amber", d:"your core room, sponsors excluded"},
   {k:"Regulars (3–4)", n:tiers.reg, col:"green", d:"one nudge from loyal"},
   {k:"Returners (2)", n:tiers.ret, col:"plum", d:"came back once"},
-  {k:"Power Team", n:tiers.sp, col:"coral", d:"sponsors in the room"},
+  {k:"Power Team", n:tiers.sp, col:"coral", d:"sponsors · most attend on comp entry"},
   {k:"Booked · "+CUR_TAG, n:AT.filter(b=>b.jul).length, col:"green", d:"already in for "+CUR_DAY},
 ]);
 const tierBadge = b => b.sp?`<span class="badge b-sp">SPONSOR</span>`:b.n>=5?`<span class="badge b-loyal">LOYALIST ${b.n}</span>`:b.n>=3?`<span class="badge b-reg">REGULAR ${b.n}</span>`:b.n===2?`<span class="badge b-ret">RETURNER</span>`:`<span class="badge b-new">1 EVENT</span>`;
 const atCols = [
   {k:"name",h:"Name",fmt:r=>`<b>${esc(r.name)}</b>${r.jul?` <span class="badge b-booked">${CUR_TAG}</span>`:""}${r.aug?` <span class="badge b-booked">${NEXT_TAG}</span>`:""}`},
   {k:"n",h:"Tier",fmt:tierBadge},
-  {k:"email",h:"Email"},{k:"city",h:"City"},
-  {k:"tix",h:"Tickets",num:1},{k:"gross",h:"Spend",num:1,fmt:r=>gbp2(r.gross)},
-  {k:"last",h:"Last event",fmt:r=>fmtD(r.last)}
+  {k:"email",h:"Email",fmt:r=>r.email||"—"},{k:"city",h:"City / Business"},
+  {k:"tix",h:"Tickets",num:1,fmt:r=>r.dirOnly?"—":r.tix},
+  {k:"gross",h:"Spend",num:1,fmt:r=>r.dirOnly?"comp entry":gbp2(r.gross)},
+  {k:"last",h:"Last event",fmt:r=>r.last?fmtD(r.last):"—"}
 ];
 let tierFilter = "all";
 const tierDefs = [["all","All"],["loyal","Loyalists 5+"],["reg","Regulars 3–4"],["ret","Returners 2"],["one","First-timers"],["sp","Power Team"],["jul","Booked "+CUR_TAG]];
