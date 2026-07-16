@@ -19,9 +19,15 @@ jobs:
           EVENTBRITE_TOKEN: ${{ secrets.EVENTBRITE_TOKEN }}
         run: python3 scripts/fetch_data.py
 
+      - name: Fetch weekly plan from monday.com
+        env:
+          MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
+        run: python3 scripts/fetch_plan.py
+
       - name: Commit if changed
         run: |
           git config user.name "rpm-dashboard-bot"
           git config user.email "actions@users.noreply.github.com"
           git add data.json
+          git add plan.json 2>/dev/null || true
           git diff --cached --quiet || (git commit -m "Data refresh $(date -u '+%Y-%m-%d %H:%M')" && git push)
