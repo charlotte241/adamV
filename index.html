@@ -290,7 +290,10 @@ fillCards("paceCards",[
   try { const r = await fetch("plan.json", {cache:"no-store"}); if(r.ok) plan = await r.json(); } catch(e){}
   const el = document.getElementById("moves");
   if(!plan || !plan.items || !plan.items.length){ el.innerHTML = ""; return; }
-  const isDone = s => /posted|sent|done|completed/i.test(s||"");
+  // "Scheduled" = queued in the sending tool = done. "Ready to be Scheduled/posted" = still needs action.
+  const isDone = s => { const t = (s||"").trim().toLowerCase();
+    if(t.startsWith("ready")) return false;
+    return t==="scheduled" || /posted|sent|done|completed/.test(t); };
   const pd = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };  // parse as LOCAL date
   const wkEnd = new Date(_t0); wkEnd.setDate(wkEnd.getDate()+7);
   const rows = plan.items.filter(i=>{ const d = pd(i.date);
