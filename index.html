@@ -114,7 +114,7 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
 </header>
 <div class="strip">
   <span class="chipp" id="countdown"></span>
-  <span class="chipp">Capacity <b>50</b></span>
+  <span class="chipp">Mission <b>50 tickets / month</b></span>
   <span class="chipp" id="snapchip"></span>
 </div>
 
@@ -128,8 +128,9 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
 <section id="pace" class="active">
   <div class="cards" id="paceCards"></div>
   <div class="flag" id="paceFlag"></div>
+  <div id="moves" style="margin:18px 0"></div>
   <h2>Sales Pace vs Past RPM Events</h2>
-  <div class="note">Cumulative tickets by days before event day. Faint lines = each past monthly RPM (hover to identify). Green = historic average · dashed amber = target curve · coral = July 2026 live. Click legend items to show/hide.</div>
+  <div class="note">Cumulative tickets by days before event day. Faint lines = last 12 monthly RPMs (hover to identify). Green = all-time historic average · dashed amber = the 50-ticket mission curve · coral = current event, live. Click legend items to show/hide.</div>
   <div class="panel chartbox"><canvas id="paceChart"></canvas></div>
   <h2>Checkpoints — auto-graded</h2>
   <div class="note" id="cpNote"></div>
@@ -141,6 +142,9 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <h2>Revenue &amp; Tickets by Event</h2>
   <div class="note">Click any bar — or any row below — to drill into that event's buyers and sales curve.</div>
   <div class="panel chartbox short"><canvas id="evChart"></canvas></div>
+  <h2>Year-on-Year — tickets by month</h2>
+  <div class="note">Completed events only, grouped by calendar month. Spot which months reliably pull and how this year compares with the same month in past years.</div>
+  <div class="panel chartbox short"><canvas id="yoyChart"></canvas></div>
   <h2>Every Event — Performance Summary</h2>
   <div class="panel scroll"><table id="evTable"></table></div>
 </section>
@@ -188,7 +192,7 @@ const _future = _evList.filter(([,d])=>new Date(d)>=_t0);
 const CURRENT_EID = _future.length ? _future[0][0] : _evList[_evList.length-1][0];
 const NEXT_EID = _future[1] ? _future[1][0] : null;
 const EXCLUDE_FROM_PACE = new Set(_future.map(([id])=>id));
-const CAPACITY = 50, TARGET = 40;
+const CAPACITY = 50, TARGET = 50;   // mission: 50 tickets sold per month (room + Zoom)
 const C = {amber:"#e8a44f",coral:"#db6470",green:"#a8c252",steel:"#5b93bd",plum:"#b0487d",muted:"#a49ecf",grid:"#2a2360"};
 
 const gbp = n => "£" + n.toLocaleString("en-GB",{maximumFractionDigits:0});
@@ -266,13 +270,37 @@ function fillCards(id, cards){
 }
 
 // ---------- pace tab ----------
+// verdict + zoom split + year-on-year reference
+const zoomCur = ORDERS.filter(o=>o.eid===CURRENT_EID).reduce((s,o)=>s+(o.zoom||0),0);
+const inRoom = cur.tix - zoomCur;
+const tgtAtNow = Math.round(targetCurve[idxNow]);
+const [VERDICT, VCOL] = cur.tix>=tgtAtNow ? ["AHEAD","green"] : cur.tix>=avgCurve[idxNow]*0.9 ? ["ON PACE","amber"] : ["BEHIND","coral"];
+const _cd = new Date(cur.date);
+const lyEv = EVENTS.find(e=>{const d=new Date(e.date); return d.getFullYear()===_cd.getFullYear()-1 && d.getMonth()===_cd.getMonth();});
 fillCards("paceCards",[
-  {k:"Tickets · "+CUR_TAG, n:cur.tix, col:"coral", d:cur.orders+" orders · "+gbp2(cur.gross)+" gross"},
+  {k:"Verdict", v:VERDICT, col:VCOL, d:cur.tix+" sold vs target of "+tgtAtNow+" by today"},
+  {k:"Sold · "+CUR_TAG, v:cur.tix+" / "+TARGET, col:"coral", d:inRoom+" in-room · "+zoomCur+" Zoom · "+gbp2(cur.gross)+" gross"},
   {k:"Days to go", n:daysToGo, col:"amber", d:CUR_DAY+", 7pm"},
-  {k:"Historic avg finish", n:avgFinal, col:"steel", d:"across "+hist.length+" monthly RPMs"},
-  {k:"Projected finish", n:projected, col:projected>=avgFinal?"green":"amber", d:"on the historic buying curve"},
-  {k:"Final-week effect", v:finalWeekPct+"%", col:"plum", d:"of tickets sell in the last 7 days"},
+  {k:"Projected finish", n:projected, col:projected>=TARGET?"green":projected>=avgFinal?"amber":"coral", d:"target "+TARGET+" · historic avg "+avgFinal},
+  {k:"This month last year", v:lyEv?lyEv.tix:"—", col:"plum", d:lyEv?("final tickets · "+fmtD(lyEv.date)):"no comparable event"},
 ]);
+// this week's moves — auto-generated from pace status and the proven RPM cadence
+(function(){
+  const m = [];
+  if(VERDICT==="BEHIND"){
+    m.push("Behind the curve: bring the next email forward — send Sunday evening or Monday 7–8am.");
+    m.push("Post in the RPM WhatsApp community with the real seats-remaining number (max two pushes per cycle).");
+  }
+  if(daysToGo>21) m.push("Content phase: one speaker-topic LinkedIn post from Adam + event link in WhatsApp.");
+  else if(daysToGo>14) m.push("Reminder email due Sunday — lead with the topic's financial relevance, not 'buy tickets'.");
+  else if(daysToGo>7){ m.push("Engaged-clickers email this Sunday — the highest-open segment."); if(VERDICT!=="BEHIND") m.push("First WhatsApp push of the cycle (two max)."); }
+  else if(daysToGo>2){ m.push("Final week — "+finalWeekPct+"% of tickets historically sell now. Daily countdown content."); m.push("48-hour last-call email with the real remaining count."); }
+  else if(daysToGo>0) m.push("Last calls: second WhatsApp shot + final email tonight.");
+  else m.push("Event day — check-in list ready; capture testimonials and photos for next cycle.");
+  if(zoomCur===0 && daysToGo>0) m.push("No Zoom tickets sold yet — mention the Zoom option in the next send.");
+  document.getElementById("moves").innerHTML = "<h2 style='margin-top:0'>This week's moves</h2>" +
+    m.slice(0,3).map(x=>`<div class="flag" style="border-left-color:var(--coral)">${x}</div>`).join("");
+})();
 const avgAtNow = Math.round(avgCurve[idxNow]);
 const diff = cur.tix - avgAtNow;
 document.getElementById("paceFlag").innerHTML = diff >= 0
@@ -283,7 +311,7 @@ const paceChart = new Chart(document.getElementById("paceChart"),{
   type:"line",
   data:{labels:Array.from({length:61},(_,i)=>60-i),
     datasets:[
-      ...histCurves.map((c,i)=>({label:fmtD(hist[i].date),data:c,borderColor:"rgba(164,158,207,.20)",borderWidth:1,pointRadius:0,pointHitRadius:6,tension:.3,_hist:true})),
+      ...histCurves.slice(-12).map((c,i)=>({label:fmtD(hist.slice(-12)[i].date),data:c,borderColor:"rgba(164,158,207,.20)",borderWidth:1,pointRadius:0,pointHitRadius:6,tension:.3,_hist:true})),
       {label:"Historic average",data:avgCurve,borderColor:C.green,borderWidth:2.5,pointRadius:0,pointHitRadius:6,tension:.3},
       {label:"Target ("+TARGET+")",data:targetCurve,borderColor:C.amber,borderDash:[6,5],borderWidth:1.5,pointRadius:0,tension:.3},
       {label:"July 2026 (live)",data:curLive,borderColor:C.coral,borderWidth:3.5,pointRadius:0,pointHitRadius:8,tension:.3},
@@ -332,6 +360,23 @@ const evChart = new Chart(document.getElementById("evChart"),{
       y:{position:"left",ticks:{color:C.muted,callback:v=>"£"+v},grid:{color:C.grid}},
       y1:{position:"right",ticks:{color:C.amber},grid:{display:false}}}}
 });
+
+// year-on-year: tickets by calendar month, one series per year (completed events only)
+(function(){
+  const done = EVENTS.filter(e=>new Date(e.date)<_t0);
+  const byYear = {};
+  done.forEach(e=>{const d=new Date(e.date); (byYear[d.getFullYear()] ||= Array(12).fill(null))[d.getMonth()]=e.tix;});
+  const years = Object.keys(byYear).sort();
+  const pal = [C.steel, C.plum, C.green, C.amber, C.coral, "#8fa1bd"];
+  new Chart(document.getElementById("yoyChart"),{
+    type:"bar",
+    data:{labels:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      datasets: years.map((y,i)=>({label:y,data:byYear[y],backgroundColor:pal[i%pal.length],borderRadius:4}))},
+    options:{maintainAspectRatio:false,plugins:{legend:{labels:{color:C.muted}}},
+      scales:{x:{ticks:{color:C.muted},grid:{display:false}},
+              y:{ticks:{color:C.muted},grid:{color:C.grid},title:{display:true,text:"tickets",color:C.muted}}}}
+  });
+})();
 
 function renderTable(el, cols, rows, defaultSort, onRow){
   let sortKey = defaultSort[0], sortDir = defaultSort[1];
@@ -419,8 +464,9 @@ const logCols = [
   {k:"dt",h:"When",fmt:r=>fmtDT(r.dt)},
   {k:"buyer",h:"Buyer",fmt:r=>`<b>${esc(r.buyer)}</b>`},
   {k:"ename",h:"Event",fmt:r=>esc(shortName(r.ename))},
-  {k:"qty",h:"Qty",num:1},
+  {k:"qty",h:"Qty",num:1,fmt:r=>r.zoom?`${r.qty} <span class="badge b-ret">ZOOM${r.zoom>1?" ×"+r.zoom:""}</span>`:r.qty},
   {k:"gross",h:"Gross",num:1,fmt:r=>gbp2(r.gross)},
+  {k:"code",h:"Source",fmt:r=>r.code?`<span class="badge b-loyal">${esc(r.code)}</span>`:'<span style="color:var(--muted)">—</span>'},
   {k:"status",h:"Status",fmt:r=>r.status==="Free Order"?'<span class="badge b-wait">FREE</span>':'<span class="badge b-good">PAID</span>'}
 ];
 const sel = document.getElementById("logEvent");
