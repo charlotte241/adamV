@@ -29,11 +29,9 @@ header{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:8px
 .logochip{background:#fff;border-radius:14px;padding:8px 14px;display:flex;align-items:center;box-shadow:0 4px 18px rgba(0,0,0,.35)}
 .logochip img{height:52px;display:block}
 h1{font-size:26px;letter-spacing:2.5px;font-weight:800}
-h1 .rev{display:inline-block;opacity:0;animation:rev .8s .15s forwards}
-@keyframes rev{to{opacity:1}}
 h1 span.shiny{background:linear-gradient(120deg,var(--amber) 30%,#fff3dd 50%,var(--amber) 70%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 3.2s linear infinite}
 @keyframes shine{to{background-position:-220% 0}}
-@media (prefers-reduced-motion: reduce){h1 .rev{animation:none;opacity:1;transform:none}h1 span.shiny{animation:none}}
+@media (prefers-reduced-motion: reduce){h1 span.shiny{animation:none}}
 .sub{color:var(--muted);font-size:14px;margin-top:2px}
 .sub b{color:var(--text)}
 .strip{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 4px}
@@ -469,8 +467,6 @@ function showTab(t){
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 if(location.hash && document.getElementById(location.hash.slice(1))) showTab(location.hash.slice(1));
 
-// reveal the wordmark (whole-span: per-letter splits break background-clip:text)
-document.querySelector("#title .shiny").classList.add("rev");
 // spotlight cards: track cursor per card
 document.addEventListener("mousemove", e=>{
   const card = e.target.closest?.(".card"); if(!card) return;
