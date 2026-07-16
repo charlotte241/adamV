@@ -284,22 +284,31 @@ fillCards("paceCards",[
   {k:"Projected finish", n:projected, col:projected>=TARGET?"green":projected>=avgFinal?"amber":"coral", d:"target "+TARGET+" · historic avg "+avgFinal},
   {k:"This month last year", v:lyEv?lyEv.tix:"—", col:"plum", d:lyEv?("final tickets · "+fmtD(lyEv.date)):"no comparable event"},
 ]);
-// this week's moves — auto-generated from pace status and the proven RPM cadence
-(function(){
-  const m = [];
-  if(VERDICT==="BEHIND"){
-    m.push("Behind the curve: bring the next email forward — send Sunday evening or Monday 7–8am.");
-    m.push("Post in the RPM WhatsApp community with the real seats-remaining number (max two pushes per cycle).");
-  }
-  if(daysToGo>21) m.push("Content phase: one speaker-topic LinkedIn post from Adam + event link in WhatsApp.");
-  else if(daysToGo>14) m.push("Reminder email due Sunday — lead with the topic's financial relevance, not 'buy tickets'.");
-  else if(daysToGo>7){ m.push("Engaged-clickers email this Sunday — the highest-open segment."); if(VERDICT!=="BEHIND") m.push("First WhatsApp push of the cycle (two max)."); }
-  else if(daysToGo>2){ m.push("Final week — "+finalWeekPct+"% of tickets historically sell now. Daily countdown content."); m.push("48-hour last-call email with the real remaining count."); }
-  else if(daysToGo>0) m.push("Last calls: second WhatsApp shot + final email tonight.");
-  else m.push("Event day — check-in list ready; capture testimonials and photos for next cycle.");
-  if(zoomCur===0 && daysToGo>0) m.push("No Zoom tickets sold yet — mention the Zoom option in the next send.");
-  document.getElementById("moves").innerHTML = "<h2 style='margin-top:0'>This week's moves</h2>" +
-    m.slice(0,3).map(x=>`<div class="flag" style="border-left-color:var(--coral)">${x}</div>`).join("");
+// this week — live from the RPM monday.com boards (Newsletters, Social, WhatsApp)
+(async function(){
+  let plan = null;
+  try { const r = await fetch("plan.json", {cache:"no-store"}); if(r.ok) plan = await r.json(); } catch(e){}
+  const el = document.getElementById("moves");
+  if(!plan || !plan.items || !plan.items.length){ el.innerHTML = ""; return; }
+  const isDone = s => /posted|sent|done|completed/i.test(s||"");
+  const pd = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };  // parse as LOCAL date
+  const wkEnd = new Date(_t0); wkEnd.setDate(wkEnd.getDate()+7);
+  const rows = plan.items.filter(i=>{ const d = pd(i.date);
+    return (d < _t0 && !isDone(i.status)) || (d >= _t0 && d <= wkEnd); });
+  if(!rows.length){ el.innerHTML = ""; return; }
+  const pill = s => isDone(s) ? `<span class="badge b-good">${esc(s)}</span>`
+    : /review|changes/i.test(s||"") ? `<span class="badge b-bad">${esc(s)}</span>`
+    : /ready|scheduled/i.test(s||"") ? `<span class="badge b-warn">${esc(s)}</span>`
+    : `<span class="badge b-wait">${esc(s||"no status")}</span>`;
+  const bCls = b => ({Newsletter:"b-loyal", Social:"b-ret", WhatsApp:"b-reg"}[b] || "b-wait");
+  el.innerHTML = `<h2 style="margin-top:0">This week — from the RPM monday boards</h2>
+  <div class="note">Everything scheduled in the next 7 days plus anything overdue, pulled from the Newsletters, Social and WhatsApp boards on each refresh.</div>
+  <div class="panel scroll"><table><tr><th>When</th><th>Channel</th><th>Item</th><th>Status</th><th>Owner</th></tr>
+  ${rows.map(i=>{ const d = pd(i.date); const late = d < _t0 && !isDone(i.status);
+    return `<tr><td>${late?'<span class="badge b-bad">OVERDUE</span> ':''}${d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</td>
+    <td><span class="badge ${bCls(i.board)}">${esc(i.channel||i.board)}</span></td>
+    <td><b>${esc(i.name)}</b></td><td>${pill(i.status)}</td><td>${esc(i.owner)}</td></tr>`; }).join("")}
+  </table></div>`;
 })();
 const avgAtNow = Math.round(avgCurve[idxNow]);
 const diff = cur.tix - avgAtNow;
