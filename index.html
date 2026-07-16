@@ -77,6 +77,7 @@ th.num{text-align:right}
 .b-warn{background:#463312;color:var(--amber)}
 .b-bad{background:#471e29;color:var(--coral)}
 .b-wait{background:#2b2560;color:var(--muted)}
+.b-sp{background:#3b1430;color:var(--plum)}
 input[type=search],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px 14px;font-size:14px;margin:6px 8px 12px 0}
 input[type=search]{width:270px}
 input[type=search]:focus,select:focus{outline:none;border-color:var(--amber)}
@@ -422,8 +423,9 @@ renderTable(document.getElementById("evTable"),
 const buyers = {};
 ORDERS.forEach(o=>{
   if(!o.email) return;
-  const b = buyers[o.email] ||= {email:o.email,name:"",city:"",events:new Set(),tix:0,gross:0,last:"",jul:false,aug:false};
+  const b = buyers[o.email] ||= {email:o.email,name:"",city:"",events:new Set(),tix:0,gross:0,last:"",jul:false,aug:false,sp:false};
   b.events.add(o.eid); b.tix+=o.qty; b.gross+=o.gross;
+  if(o.sp) b.sp = true;
   b.name = (o.first+" "+o.last).trim();
   if(o.city) b.city=o.city;
   if(o.edate>b.last) b.last=o.edate;
@@ -431,15 +433,17 @@ ORDERS.forEach(o=>{
   if(NEXT_EID && o.eid===NEXT_EID) b.aug=true;
 });
 const AT = Object.values(buyers).map(b=>({...b,n:b.events.size}));
-const tiers = {loyal:AT.filter(b=>b.n>=5).length, reg:AT.filter(b=>b.n===3||b.n===4).length, ret:AT.filter(b=>b.n===2).length};
+const gen = AT.filter(b=>!b.sp);   // genuine attendees, sponsors excluded from tiers
+const tiers = {loyal:gen.filter(b=>b.n>=5).length, reg:gen.filter(b=>b.n===3||b.n===4).length, ret:gen.filter(b=>b.n===2).length, sp:AT.filter(b=>b.sp).length};
 fillCards("atCards",[
   {k:"Unique buyers", n:AT.length, col:"steel", d:"every monthly RPM ever"},
-  {k:"Loyalists (5+)", n:tiers.loyal, col:"amber", d:"your core room"},
+  {k:"Loyalists (5+)", n:tiers.loyal, col:"amber", d:"your core room, sponsors excluded"},
   {k:"Regulars (3–4)", n:tiers.reg, col:"green", d:"one nudge from loyal"},
   {k:"Returners (2)", n:tiers.ret, col:"plum", d:"came back once"},
-  {k:"Booked · "+CUR_TAG, n:AT.filter(b=>b.jul).length, col:"coral", d:"already in for "+CUR_DAY},
+  {k:"Power Team", n:tiers.sp, col:"coral", d:"sponsors in the room"},
+  {k:"Booked · "+CUR_TAG, n:AT.filter(b=>b.jul).length, col:"green", d:"already in for "+CUR_DAY},
 ]);
-const tierBadge = b => b.n>=5?`<span class="badge b-loyal">LOYALIST ${b.n}</span>`:b.n>=3?`<span class="badge b-reg">REGULAR ${b.n}</span>`:b.n===2?`<span class="badge b-ret">RETURNER</span>`:`<span class="badge b-new">1 EVENT</span>`;
+const tierBadge = b => b.sp?`<span class="badge b-sp">SPONSOR</span>`:b.n>=5?`<span class="badge b-loyal">LOYALIST ${b.n}</span>`:b.n>=3?`<span class="badge b-reg">REGULAR ${b.n}</span>`:b.n===2?`<span class="badge b-ret">RETURNER</span>`:`<span class="badge b-new">1 EVENT</span>`;
 const atCols = [
   {k:"name",h:"Name",fmt:r=>`<b>${esc(r.name)}</b>${r.jul?` <span class="badge b-booked">${CUR_TAG}</span>`:""}${r.aug?` <span class="badge b-booked">${NEXT_TAG}</span>`:""}`},
   {k:"n",h:"Tier",fmt:tierBadge},
@@ -448,16 +452,17 @@ const atCols = [
   {k:"last",h:"Last event",fmt:r=>fmtD(r.last)}
 ];
 let tierFilter = "all";
-const tierDefs = [["all","All"],["loyal","Loyalists 5+"],["reg","Regulars 3–4"],["ret","Returners 2"],["one","First-timers"],["jul","Booked "+CUR_TAG]];
+const tierDefs = [["all","All"],["loyal","Loyalists 5+"],["reg","Regulars 3–4"],["ret","Returners 2"],["one","First-timers"],["sp","Power Team"],["jul","Booked "+CUR_TAG]];
 const chipsEl = document.getElementById("tierChips");
 chipsEl.innerHTML = tierDefs.map(([k,l])=>`<button data-t="${k}" class="${k==="all"?"on":""}">${l}</button>`).join("");
 function atFiltered(){
   const q = document.getElementById("atSearch").value.toLowerCase();
   return AT.filter(b=>{
-    if(tierFilter==="loyal"&&b.n<5) return false;
-    if(tierFilter==="reg"&&(b.n<3||b.n>4)) return false;
-    if(tierFilter==="ret"&&b.n!==2) return false;
-    if(tierFilter==="one"&&b.n!==1) return false;
+    if(tierFilter==="loyal"&&(b.sp||b.n<5)) return false;
+    if(tierFilter==="reg"&&(b.sp||b.n<3||b.n>4)) return false;
+    if(tierFilter==="ret"&&(b.sp||b.n!==2)) return false;
+    if(tierFilter==="one"&&(b.sp||b.n!==1)) return false;
+    if(tierFilter==="sp"&&!b.sp) return false;
     if(tierFilter==="jul"&&!b.jul) return false;
     return (b.name+b.email+b.city).toLowerCase().includes(q);
   });
@@ -526,7 +531,7 @@ window.openBuyer = function(email){
   const b = buyers[email]; if(!b) return;
   const os = ORDERS.filter(o=>o.email===email).sort((a,b)=>b.edate.localeCompare(a.edate));
   openModal(`
-    <h3>${esc(b.name)} ${tierBadge({n:b.events.size})}</h3>
+    <h3>${esc(b.name)} ${tierBadge({n:b.events.size, sp:b.sp})}</h3>
     <div class="note">${esc(b.email)}${b.city?" · "+esc(b.city):""}</div>
     <div class="mcards">
       ${cardHTML({k:"Events",v:b.events.size,col:"steel",d:"attended"})}
