@@ -143,6 +143,9 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <h2>Revenue &amp; Tickets by Event</h2>
   <div class="note">Click any bar — or any row below — to drill into that event's buyers and sales curve.</div>
   <div class="panel chartbox short"><canvas id="evChart"></canvas></div>
+  <h2>Total Sales — accumulating through each year</h2>
+  <div class="note">Cumulative gross revenue by order date, one line per year. Where the current year's line sits above last year's at the same point, RPM is ahead of last year's money.</div>
+  <div class="panel chartbox short"><canvas id="cumChart"></canvas></div>
   <h2>Year-on-Year — tickets by month</h2>
   <div class="note">Completed events only, grouped by calendar month. Spot which months reliably pull and how this year compares with the same month in past years.</div>
   <div class="panel chartbox short"><canvas id="yoyChart"></canvas></div>
@@ -373,6 +376,43 @@ const evChart = new Chart(document.getElementById("evChart"),{
       y:{position:"left",ticks:{color:C.muted,callback:v=>"£"+v},grid:{color:C.grid}},
       y1:{position:"right",ticks:{color:C.amber},grid:{display:false}}}}
 });
+
+// cumulative sales race: gross revenue accumulating through each year, by order date
+(function(){
+  const byYear = {};
+  ORDERS.forEach(o=>{
+    const d = new Date(o.dt.replace(" ","T"));
+    const doy = Math.floor((d - new Date(d.getFullYear(),0,1))/864e5);
+    (byYear[d.getFullYear()] ||= Array(366).fill(0))[Math.min(doy,365)] += o.gross;
+  });
+  const years = Object.keys(byYear).sort();
+  const nowYear = new Date().getFullYear();
+  const nowDoy = Math.floor((new Date() - new Date(nowYear,0,1))/864e5);
+  const yearCol = {}; const pal = [C.steel, C.coral, C.green, C.amber, C.plum];
+  const datasets = years.map((y,i)=>{
+    let cum = 0;
+    const data = byYear[y].map((v,doy)=>{
+      cum += v;
+      return (+y===nowYear && doy>nowDoy) ? null : Math.round(cum*100)/100;
+    });
+    const isCur = +y===nowYear;
+    return {label:y+" ("+gbp(cum)+(isCur?" so far":"")+")", data,
+      borderColor: pal[i%pal.length], borderWidth: isCur?3:2, pointRadius:0, pointHitRadius:6, tension:.25,
+      fill: isCur, backgroundColor:"rgba(219,100,112,.08)"};
+  });
+  const mStart = [0,31,59,90,120,151,181,212,243,273,304,334];
+  const mName = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  new Chart(document.getElementById("cumChart"),{
+    type:"line",
+    data:{labels:Array.from({length:366},(_,i)=>i), datasets},
+    options:{maintainAspectRatio:false, interaction:{mode:"nearest",intersect:false},
+      plugins:{legend:{labels:{color:C.muted}},
+        tooltip:{callbacks:{title:items=>{const doy=+items[0].label; const m=mStart.findIndex((s,i)=>doy>=s&&(i===11||doy<mStart[i+1])); return mName[m]+" "+(doy-mStart[m]+1);},
+          label:c=>c.dataset.label.split(" ")[0]+": "+gbp(c.parsed.y)}}},
+      scales:{x:{ticks:{color:C.muted, callback:(v,i)=> mStart.includes(i)?mName[mStart.indexOf(i)]:null, maxRotation:0, autoSkip:false},grid:{color:C.grid}},
+              y:{ticks:{color:C.muted, callback:v=>"£"+(v>=1000?(v/1000)+"k":v)},grid:{color:C.grid},title:{display:true,text:"cumulative gross £",color:C.muted}}}}
+  });
+})();
 
 // year-on-year: tickets by calendar month, one series per year (completed events only)
 (function(){
