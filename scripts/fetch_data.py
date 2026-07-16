@@ -45,11 +45,10 @@ def main():
 
     events = list(paged(f"/organizations/{org}/events/", "events",
                         order_by="start_asc", time_filter="all"))
-    SINCE = dt.date(2025, 1, 1)          # ignore everything before 2025
     rpm = []
     for e in events:
         d = dt.date.fromisoformat(e["start"]["local"][:10])
-        if d >= SINCE and d == last_thursday(d):   # monthly RPM only - skips one-off workshops
+        if d == last_thursday(d):        # monthly RPM only - skips one-off workshops
             rpm.append((e["id"], d.isoformat(), e["name"]["text"] or ""))
     print(f"{len(events)} events found, {len(rpm)} are last-Thursday RPMs")
 
