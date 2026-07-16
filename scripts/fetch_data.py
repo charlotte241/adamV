@@ -52,9 +52,20 @@ def main():
             rpm.append((e["id"], d.isoformat(), e["name"]["text"] or ""))
     print(f"{len(events)} events found, {len(rpm)} are last-Thursday RPMs")
 
+    ZOOM_WORDS = ("zoom", "online", "virtual", "livestream", "live stream")
+
+    def fetch_event_orders(eid):
+        # richer expansion first (promo codes); fall back if the API rejects it
+        for expand in ("attendees,attendees.promotional_code", "attendees"):
+            try:
+                return list(paged(f"/events/{eid}/orders/", "orders", expand=expand))
+            except Exception as ex:
+                print(f"  expand '{expand}' failed for {eid}: {ex}")
+        return []
+
     orders = []
     for eid, edate, ename in rpm:
-        for o in paged(f"/events/{eid}/orders/", "orders", expand="attendees"):
+        for o in fetch_event_orders(eid):
             if o.get("status") != "placed":
                 continue                  # skips refunded / abandoned
             costs = o.get("costs") or {}
@@ -63,11 +74,17 @@ def main():
             net = round(gross - mv("eventbrite_fee") - mv("payment_fee") - mv("tax"), 2)
             att = [a for a in (o.get("attendees") or []) if not a.get("cancelled")]
             qty = len(att) or 1
-            city = ""
+            city, zoom, code = "", 0, ""
             for a in att:
-                home = ((a.get("profile") or {}).get("addresses") or {}).get("home") or {}
-                if home.get("city"):
-                    city = home["city"]; break
+                tc = (a.get("ticket_class_name") or "").lower()
+                if any(w in tc for w in ZOOM_WORDS):
+                    zoom += 1
+                if not code:
+                    pc = a.get("promotional_code")
+                    code = (pc.get("code", "") if isinstance(pc, dict) else "") or a.get("affiliate") or ""
+                if not city:
+                    home = ((a.get("profile") or {}).get("addresses") or {}).get("home") or {}
+                    city = home.get("city") or ""
             orders.append({
                 "oid": o["id"],
                 "dt": o["created"][:19].replace("T", " "),
@@ -76,7 +93,7 @@ def main():
                 "email": (o.get("email") or "").strip().lower(),
                 "city": city,
                 "eid": eid, "edate": edate, "ename": ename,
-                "qty": qty,
+                "qty": qty, "zoom": zoom, "code": code,
                 "status": "Free Order" if gross == 0 else "Eventbrite Completed",
                 "gross": round(gross, 2), "net": net,
             })
