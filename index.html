@@ -220,6 +220,7 @@ const tagOf = d => new Date(d).toLocaleDateString("en-GB",{month:"short",year:"2
 const CUR_TAG = tagOf(cur.date);
 const NEXT_TAG = NEXT_EID ? tagOf(evMap[NEXT_EID].date) : null;
 const CUR_DAY = new Date(cur.date).toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"long"});
+const CUR_MONTH = new Date(cur.date).toLocaleDateString("en-GB",{month:"long"});
 document.getElementById("subEvent").textContent = shortName(cur.name.replace(/^.*?[:|]\s*/,"") || cur.name);
 
 function curve(eid){
@@ -258,10 +259,12 @@ tick(); setInterval(tick, 30000);
 
 // ---------- animated counters ----------
 function animate(el, target, fmt){
+  el.textContent = fmt(target);
+  if(document.visibilityState !== "visible" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const t0 = performance.now(), dur = 700;
   (function step(t){
     const p = Math.min(1,(t-t0)/dur), v = target*(1-Math.pow(1-p,3));
-    el.textContent = fmt(v);
+    el.textContent = fmt(p<1 ? v : target);
     if(p<1) requestAnimationFrame(step);
   })(t0);
 }
@@ -320,8 +323,8 @@ fillCards("paceCards",[
 const avgAtNow = Math.round(avgCurve[idxNow]);
 const diff = cur.tix - avgAtNow;
 document.getElementById("paceFlag").innerHTML = diff >= 0
-  ? `<b>On the curve.</b> At ${daysToGo} days out the historic average is ${avgAtNow} tickets — July is at <b>${cur.tix}</b> (+${diff}). ${finalWeekPct}% of RPM tickets historically land in the final 7 days: hold nerve, run the final-week pushes as planned.`
-  : `<b>${Math.abs(diff)} behind the historic curve.</b> Past events averaged ${avgAtNow} tickets at ${daysToGo} days out; July is at <b>${cur.tix}</b>. Not a crisis — ${finalWeekPct}% of tickets sell in the final week — but bring the next push forward rather than waiting.`;
+  ? `<b>On the curve.</b> At ${daysToGo} days out the historic average is ${avgAtNow} tickets — ${CUR_MONTH} is at <b>${cur.tix}</b> (+${diff}). ${finalWeekPct}% of RPM tickets historically land in the final 7 days: hold nerve, run the final-week pushes as planned.`
+  : `<b>${Math.abs(diff)} behind the historic curve.</b> Past events averaged ${avgAtNow} tickets at ${daysToGo} days out; ${CUR_MONTH} is at <b>${cur.tix}</b>. Not a crisis — ${finalWeekPct}% of tickets sell in the final week — but bring the next push forward rather than waiting.`;
 
 const paceChart = new Chart(document.getElementById("paceChart"),{
   type:"line",
@@ -330,7 +333,7 @@ const paceChart = new Chart(document.getElementById("paceChart"),{
       ...histCurves.slice(-12).map((c,i)=>({label:fmtD(hist.slice(-12)[i].date),data:c,borderColor:"rgba(164,158,207,.20)",borderWidth:1,pointRadius:0,pointHitRadius:6,tension:.3,_hist:true})),
       {label:"Historic average",data:avgCurve,borderColor:C.green,borderWidth:2.5,pointRadius:0,pointHitRadius:6,tension:.3},
       {label:"Target ("+TARGET+")",data:targetCurve,borderColor:C.amber,borderDash:[6,5],borderWidth:1.5,pointRadius:0,tension:.3},
-      {label:"July 2026 (live)",data:curLive,borderColor:C.coral,borderWidth:3.5,pointRadius:0,pointHitRadius:8,tension:.3},
+      {label:CUR_MONTH+" "+new Date(cur.date).getFullYear()+" (live)",data:curLive,borderColor:C.coral,borderWidth:3.5,pointRadius:0,pointHitRadius:8,tension:.3},
     ]},
   options:{maintainAspectRatio:false,interaction:{mode:"nearest",intersect:false},
     plugins:{legend:{labels:{color:C.muted,filter:i=>!/^\d/.test(i.text)}},
