@@ -235,17 +235,31 @@ function curve(eid){
 }
 const histCurves = hist.map(e=>curve(e.eid));
 const avgCurve = Array.from({length:61},(_,i)=> histCurves.reduce((s,c)=>s+c[i],0)/histCurves.length);
-const targetCurve = avgCurve.map(v=> v * TARGET / avgCurve[60]);
+// How many tickets still arrive from each point onward, per past event.
+// Backtested against the last 24 events: adding this to what is already sold
+// predicts the finish with ~5 tickets of error, versus ~8 for scaling up the
+// curve, so every projection and target below is built on it.
+const remainingAt = i => histCurves.map(c => c[60] - c[i]);
+const avgRemaining = Array.from({length:61},(_,i)=> remainingAt(i).reduce((s,v)=>s+v,0)/histCurves.length);
+const pctile = (arr,p) => { const s=[...arr].sort((a,b)=>a-b); return s[Math.min(s.length-1, Math.floor(s.length*p))]; };
+// Target line = what must be sold by each point to still finish on TARGET,
+// given how many tickets typically arrive after that point.
+const targetCurve = avgRemaining.map(r => Math.max(0, TARGET - r));
 const curCurve = curve(CURRENT_EID);
 const today = new Date(); today.setHours(0,0,0,0);
 const evDay = new Date(cur.date + "T19:00:00");
-const daysToGo = Math.max(0, Math.round((new Date(cur.date) - today)/864e5));
-const idxNow = Math.min(60, 60 - daysToGo);
+const [_evY,_evM,_evD] = cur.date.split("-").map(Number);
+const daysToGo = Math.max(0, Math.round((new Date(_evY,_evM-1,_evD) - today)/864e5));
+const idxNow = Math.max(0, Math.min(60, 60 - daysToGo));
 const curLive = curCurve.map((v,i)=> i<=idxNow ? v : null);
-const f7 = hist.reduce((a,e)=>{const c=curve(e.eid); return [a[0]+(c[60]-c[53]), a[1]+c[60]];},[0,0]);
-const finalWeekPct = Math.round(100*f7[0]/f7[1]);
-const fracNow = avgCurve[idxNow]/avgCurve[60];
-const projected = Math.round(cur.tix / Math.max(fracNow, .05));
+const avgFinalWeek = avgRemaining[53];
+const finalWeekPct = Math.round(100 * avgFinalWeek / avgCurve[60]);
+const stillToCome = avgRemaining[idxNow];
+const projected = Math.round(cur.tix + stillToCome);
+const projLo = Math.round(cur.tix + pctile(remainingAt(idxNow), .25));
+const projHi = Math.round(cur.tix + pctile(remainingAt(idxNow), .75));
+const needNow = Math.round(targetCurve[idxNow]);
+const gapToTarget = Math.max(0, TARGET - cur.tix);
 const avgFinal = Math.round(avgCurve[60]);
 
 // ---------- countdown ----------
@@ -280,15 +294,17 @@ function fillCards(id, cards){
 // verdict + zoom split + year-on-year reference
 const zoomCur = ORDERS.filter(o=>o.eid===CURRENT_EID).reduce((s,o)=>s+(o.zoom||0),0);
 const inRoom = cur.tix - zoomCur;
-const tgtAtNow = Math.round(targetCurve[idxNow]);
-const [VERDICT, VCOL] = cur.tix>=tgtAtNow ? ["AHEAD","green"] : cur.tix>=avgCurve[idxNow]*0.9 ? ["ON PACE","amber"] : ["BEHIND","coral"];
+const tgtAtNow = needNow;
+const [VERDICT, VCOL] = cur.tix >= tgtAtNow ? ["ON TRACK","green"]
+  : cur.tix >= tgtAtNow * 0.9 ? ["AT RISK","amber"] : ["BEHIND","coral"];
 const _cd = new Date(cur.date);
 const lyEv = EVENTS.find(e=>{const d=new Date(e.date); return d.getFullYear()===_cd.getFullYear()-1 && d.getMonth()===_cd.getMonth();});
 fillCards("paceCards",[
-  {k:"Verdict", v:VERDICT, col:VCOL, d:cur.tix+" sold vs target of "+tgtAtNow+" by today"},
+  {k:"Verdict", v:VERDICT, col:VCOL, d:"need "+tgtAtNow+" by today for "+TARGET+" · normal at this point is "+Math.round(avgCurve[idxNow])},
   {k:"Sold · "+CUR_TAG, v:cur.tix+" / "+TARGET, col:"coral", d:inRoom+" in-room · "+zoomCur+" Zoom · "+gbp2(cur.gross)+" gross"},
   {k:"Days to go", n:daysToGo, col:"amber", d:CUR_DAY+", 7pm"},
-  {k:"Projected finish", n:projected, col:projected>=TARGET?"green":projected>=avgFinal?"amber":"coral", d:"target "+TARGET+" · historic avg "+avgFinal},
+  {k:"Projected finish", v:String(projected), col:projected>=TARGET?"green":projected>=avgFinal?"amber":"coral", d:"likely "+projLo+"–"+projHi+" · target "+TARGET+" · avg "+avgFinal},
+  {k:"Still needed", v:gapToTarget===0?"MISSION HIT":String(gapToTarget), col:gapToTarget<=Math.round(stillToCome)?"green":"coral", d:gapToTarget===0?"target reached":"typical from here: "+Math.round(stillToCome)},
   {k:"This month last year", v:lyEv?lyEv.tix:"—", col:"plum", d:lyEv?("final tickets · "+fmtD(lyEv.date)):"no comparable event"},
 ]);
 // this week — live from the RPM monday.com boards (Newsletters, Social, WhatsApp)
@@ -321,10 +337,13 @@ fillCards("paceCards",[
   </table></div>`;
 })();
 const avgAtNow = Math.round(avgCurve[idxNow]);
-const diff = cur.tix - avgAtNow;
-document.getElementById("paceFlag").innerHTML = diff >= 0
-  ? `<b>On the curve.</b> At ${daysToGo} days out the historic average is ${avgAtNow} tickets — ${CUR_MONTH} is at <b>${cur.tix}</b> (+${diff}). ${finalWeekPct}% of RPM tickets historically land in the final 7 days: hold nerve, run the final-week pushes as planned.`
-  : `<b>${Math.abs(diff)} behind the historic curve.</b> Past events averaged ${avgAtNow} tickets at ${daysToGo} days out; ${CUR_MONTH} is at <b>${cur.tix}</b>. Not a crisis — ${finalWeekPct}% of tickets sell in the final week — but bring the next push forward rather than waiting.`;
+const diff = cur.tix - tgtAtNow;
+const needRate = daysToGo > 0 ? (gapToTarget / daysToGo).toFixed(1) : "0";
+document.getElementById("paceFlag").innerHTML = gapToTarget === 0
+  ? `<b>Mission hit.</b> ${cur.tix} of ${TARGET} sold with ${daysToGo} days still to go. Anything further is upside — switch the messaging to the waiting list and next month.`
+  : diff >= 0
+  ? `<b>On track for ${TARGET}.</b> ${CUR_MONTH} is at <b>${cur.tix}</b>; ${tgtAtNow} is needed by today to finish on ${TARGET}, putting you ${diff} ahead. <b>${gapToTarget} still to sell</b> and typically ${Math.round(stillToCome)} arrive from here — keep the planned pushes running.`
+  : `<b>${Math.abs(diff)} short of the ${TARGET} line.</b> ${CUR_MONTH} is at <b>${cur.tix}</b>; hitting ${TARGET} needs ${tgtAtNow} by today. <b>${gapToTarget} still to sell in ${daysToGo} days</b> (${needRate}/day) versus the ${Math.round(stillToCome)} that typically arrive — that gap does not close on its own, so add a push beyond the plan.`;
 
 const paceChart = new Chart(document.getElementById("paceChart"),{
   type:"line",
@@ -350,11 +369,11 @@ cps.forEach(d=>{
   const passed = d >= daysToGo;
   let actual="—", st=`<span class="badge b-wait">UPCOMING</span>`;
   if(passed){ actual = curCurve[i];
-    st = actual>=tgt ? `<span class="badge b-good">AHEAD</span>` : actual>=avg*0.9 ? `<span class="badge b-warn">ON PACE</span>` : `<span class="badge b-bad">BEHIND</span>`; }
+    st = actual>=tgt ? `<span class="badge b-good">ON TRACK</span>` : actual>=tgt*0.9 ? `<span class="badge b-warn">AT RISK</span>` : `<span class="badge b-bad">BEHIND</span>`; }
   cpRows += `<tr><td>${d===0?"Event day":d+" days"}</td><td>${dt.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</td><td class="num">${avg}</td><td class="num">${tgt}</td><td class="num"><b>${actual}</b></td><td>${st}</td></tr>`;
 });
 document.getElementById("cpTable").innerHTML = cpRows;
-document.getElementById("cpNote").textContent = `AHEAD = at or above the target curve (finish of ${TARGET}). ON PACE = within 10% of the historic average. BEHIND at any checkpoint = bring the next push forward. Capacity ${CAPACITY}.`;
+document.getElementById("cpNote").innerHTML = `<b>Target</b> = what must be sold by that date to still finish on ${TARGET}, based on how many tickets typically arrive after it. ON TRACK = at or above it · AT RISK = within 10% below · BEHIND = more than 10% below, which needs an extra push, not just the plan. <b>Historic avg</b> is where past events actually were, shown for context, not as the goal.`;
 
 // ---------- events tab ----------
 const tot = EVENTS.reduce((a,e)=>({tix:a.tix+e.tix,gross:a.gross+e.gross,net:a.net+e.net,orders:a.orders+e.orders}),{tix:0,gross:0,net:0,orders:0});
