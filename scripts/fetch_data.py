@@ -6,9 +6,9 @@ from eventbrite.com/platform/api-keys, stored as an encrypted repo secret).
 Emails are masked before anything is written, so data.json never contains
 personal email addresses.
 """
-import json, os, sys, calendar, collections
+import json, os, sys, time, calendar, collections
 import datetime as dt
-import urllib.request, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 
 TOKEN = os.environ["EVENTBRITE_TOKEN"].strip()
 API = "https://www.eventbriteapi.com/v3"
@@ -17,8 +17,25 @@ def get(path, **params):
     qs = urllib.parse.urlencode(params)
     url = f"{API}{path}?{qs}"
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {TOKEN}"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)
+    last = None
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code in (429, 500, 502, 503, 504):
+                wait = min(2 ** attempt * 5, 60)
+                print("  HTTP", e.code, "on", path, "- retry", attempt + 1, "of 5 in", wait, "s")
+                time.sleep(wait)
+                continue
+            raise
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last = e
+            wait = min(2 ** attempt * 5, 60)
+            print("  network error on", path, e, "- retry", attempt + 1, "of 5 in", wait, "s")
+            time.sleep(wait)
+    raise last
 
 def paged(path, key, **params):
     page = 1
