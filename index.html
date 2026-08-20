@@ -345,7 +345,7 @@ fillCards("paceCards",[
   const soon = open.filter(i=>pdLocal(i.date) <= new Date(today.getTime()+7*864e5));
   const overdue = open.filter(i=>pdLocal(i.date) < today);
   const heavy = i => /newsletter|whatsapp/i.test(i.channel+" "+i.board);
-  const ideas = soon.filter(i=>/^idea/i.test((i.status||"").trim()));
+  const ideas = soon.filter(i=>/^idea|^not started/i.test((i.status||"").trim()));
   const review = soon.filter(i=>/review|changes/i.test(i.status||""));
   const owners = {}; soon.forEach(i=>owners[i.owner||"unassigned"]=(owners[i.owner||"unassigned"]||0)+1);
   const topOwner = Object.entries(owners).sort((a,b)=>b[1]-a[1])[0];
@@ -359,7 +359,7 @@ fillCards("paceCards",[
   if(heavyOver.length)
     B.push({w:90, s:`${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}`, t:`<b>${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}</b> - the highest-converting channels: ${heavyOver.slice(0,3).map(nm).join("; ")}.`});
   if(ideas.length)
-    B.push({w:82, s:`${ideas.length} ${ideas.length===1?"item":"items"} still unwritten`, t:`<b>${ideas.length} ${ideas.length===1?"item is":"items are"} still at "Idea"</b> due within 7 days - nothing written yet: ${ideas.slice(0,3).map(nm).join("; ")}.`});
+    B.push({w:82, s:`${ideas.length} ${ideas.length===1?"item":"items"} still unwritten`, t:`<b>${ideas.length} ${ideas.length===1?"item has":"items have"} no content yet</b> due within 7 days: ${ideas.slice(0,3).map(nm).join("; ")}.`});
   if(review.length)
     B.push({w:74, s:`${review.length} awaiting sign-off`, t:`<b>${review.length} awaiting review</b> - written but not signed off, so it cannot go out: ${review.slice(0,3).map(i=>nm(i)+(i.owner?" - "+esc(i.owner):"")).join("; ")}.`});
   const socialOver = overdue.filter(i=>!heavy(i));
