@@ -6,9 +6,9 @@ avatar -> Developers -> My access tokens, stored as an encrypted repo secret).
 Exits quietly if the token is not configured, so the workflow still succeeds.
 Only item names, dates, statuses, channels and owner FIRST names are published.
 """
-import json, os, sys
+import json, os, sys, time
 import datetime as dt
-import urllib.request
+import urllib.request, urllib.error
 
 TOKEN = os.environ.get("MONDAY_TOKEN", "").strip()
 if not TOKEN:
@@ -30,7 +30,21 @@ req = urllib.request.Request(
     "https://api.monday.com/v2",
     data=json.dumps({"query": query}).encode(),
     headers={"Authorization": TOKEN, "Content-Type": "application/json"})
-resp = json.load(urllib.request.urlopen(req, timeout=60))
+resp = None
+for attempt in range(4):
+    try:
+        resp = json.load(urllib.request.urlopen(req, timeout=30))
+        break
+    except Exception as e:
+        wait = min(2 ** attempt * 5, 40)
+        print("monday fetch failed", e, "- retry", attempt + 1, "of 4 in", wait, "s")
+        time.sleep(wait)
+
+if resp is None:
+    # the plan panel is non-critical: keep the existing plan.json rather than
+    # failing the run and emailing a false alarm
+    print("monday unreachable after retries - leaving existing plan.json in place")
+    sys.exit(0)
 if "errors" in resp:
     print("monday API error:", resp["errors"]); sys.exit(1)
 
