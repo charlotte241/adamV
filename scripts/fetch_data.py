@@ -67,10 +67,15 @@ def main():
     for e in events:
         d = dt.date.fromisoformat(e["start"]["local"][:10])
         name = e["name"]["text"] or ""
+        # RPM normally runs on the last Thursday, but it has occasionally moved
+        # (Feb and Jul 2022 ran on the 3rd Thursday). Name is the safety net so a
+        # rescheduled meet is never dropped; workshops and clinics stay out.
+        nl = name.lower()
+        looks_like_rpm = "reading property meet" in nl or nl.startswith("rpm")
         if d < SINCE:
             reason = "before 2022"
-        elif d != last_thursday(d):
-            reason = "not a last Thursday"
+        elif not (d == last_thursday(d) or looks_like_rpm):
+            reason = "not a monthly RPM"
         else:
             reason = None
             rpm.append((e["id"], d.isoformat(), name))
