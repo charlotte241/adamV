@@ -78,6 +78,18 @@ th.num{text-align:right}
 .b-bad{background:#471e29;color:var(--coral)}
 .b-wait{background:#2b2560;color:var(--muted)}
 .b-sp{background:#3b1430;color:var(--plum)}
+/* Right Now band - the at-a-glance layer, above the tabs */
+#rightNow{background:linear-gradient(135deg,#2a2168 0%,var(--panel) 65%);border:1px solid var(--line);border-left:5px solid var(--coral);border-radius:16px;padding:18px 20px;margin:16px 0 2px}
+#rightNow.rn-ok{border-left-color:var(--green)} #rightNow.rn-warn{border-left-color:var(--amber)}
+#rightNow .rnHead{font-size:11.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted)}
+#rightNow .rnLine{font-size:18px;font-weight:700;margin:6px 0 14px;line-height:1.5}
+#rightNow .rnNums{display:flex;gap:28px;flex-wrap:wrap;margin-bottom:14px}
+#rightNow .rnNum b{display:block;font-size:23px;font-variant-numeric:tabular-nums;line-height:1.2}
+#rightNow .rnNum span{font-size:11.5px;color:var(--muted)}
+#rightNow .rnBlock{font-size:11.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+#rightNow ol{margin:0;padding-left:20px;font-size:13.5px;color:var(--muted)}
+#rightNow ol li{margin:5px 0} #rightNow ol li b{color:var(--text)}
+#rightNow .rnClear{font-size:13.5px;color:var(--green)}
 input[type=search],select{background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--text);padding:9px 14px;font-size:14px;margin:6px 8px 12px 0}
 input[type=search]{width:270px}
 input[type=search]:focus,select:focus{outline:none;border-color:var(--amber)}
@@ -118,6 +130,8 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <span class="chipp">Mission <b>50 tickets / month</b></span>
   <span class="chipp" id="snapchip"></span>
 </div>
+
+<div id="rightNow"></div>
 
 <nav>
   <button data-tab="pace" class="active">📈 Pace Tracker</button>
@@ -189,6 +203,13 @@ try {
 }
 const ORDERS = DATA.orders;
 const SNAPSHOT = DATA.snapshot;
+// the monday.com plan, shared by the Right Now band and the weekly panel
+let PLAN = null;
+try { const pr = await fetch("plan.json", {cache:"no-store"}); if(pr.ok) PLAN = await pr.json(); } catch(e) {}
+const isDoneStatus = s => { const x=(s||"").trim().toLowerCase();
+  if(x.startsWith("ready")) return false;
+  return x==="scheduled" || /posted|sent|done|completed/.test(x); };
+const pdLocal = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
 // dynamic event detection: current = next upcoming (or most recent), next = one after
 const _evList = [...new Map(ORDERS.map(o=>[o.eid,o.edate]))].sort((a,b)=>a[1].localeCompare(b[1]));
 const _t0 = new Date(); _t0.setHours(0,0,0,0);
@@ -307,17 +328,71 @@ fillCards("paceCards",[
   {k:"Still needed", v:gapToTarget===0?"MISSION HIT":String(gapToTarget), col:gapToTarget<=Math.round(stillToCome)?"green":"coral", d:gapToTarget===0?"target reached":"typical from here: "+Math.round(stillToCome)},
   {k:"This month last year", v:lyEv?lyEv.tix:"—", col:"plum", d:lyEv?("final tickets · "+fmtD(lyEv.date)):"no comparable event"},
 ]);
+// ---------- Right Now band: briefing engine ----------
+// Deterministic. Every sentence is derived from the ticket data and the monday
+// boards - nothing is generated or estimated beyond the stated averages.
+(function(){
+  const el = document.getElementById("rightNow");
+  const wk = new Date(today.getTime() - 7*864e5);
+  const curOrders = ORDERS.filter(o=>o.eid===CURRENT_EID);
+  const soldLast7 = curOrders.filter(o=>new Date(o.dt.replace(" ","T"))>=wk).reduce((s,o)=>s+o.qty,0);
+  const rateActual = soldLast7/7;
+  const rateNeeded = daysToGo>0 ? gapToTarget/daysToGo : 0;
+  const lastSale = curOrders.map(o=>o.dt).sort().pop();
+  const daysSinceSale = lastSale ? Math.round((today - pdLocal(lastSale.slice(0,10)))/864e5) : null;
+  const items = (PLAN && PLAN.items) ? PLAN.items : [];
+  const open = items.filter(i=>!isDoneStatus(i.status));
+  const soon = open.filter(i=>pdLocal(i.date) <= new Date(today.getTime()+7*864e5));
+  const overdue = open.filter(i=>pdLocal(i.date) < today);
+  const heavy = i => /newsletter|whatsapp/i.test(i.channel+" "+i.board);
+  const ideas = soon.filter(i=>/^idea/i.test((i.status||"").trim()));
+  const review = soon.filter(i=>/review|changes/i.test(i.status||""));
+  const owners = {}; soon.forEach(i=>owners[i.owner||"unassigned"]=(owners[i.owner||"unassigned"]||0)+1);
+  const topOwner = Object.entries(owners).sort((a,b)=>b[1]-a[1])[0];
+  const nm = i => esc(i.name)+" ("+pdLocal(i.date).toLocaleDateString("en-GB",{day:"numeric",month:"short"})+")";
+  const B = [];
+  if(rateNeeded>0 && rateActual<rateNeeded)
+    B.push({w:100, s:`pace is ${rateActual.toFixed(1)}/day against ${rateNeeded.toFixed(1)} needed`, t:`<b>Selling ${rateActual.toFixed(1)}/day, need ${rateNeeded.toFixed(1)}/day.</b> ${gapToTarget} tickets in ${daysToGo} days - current pace delivers about ${Math.round(cur.tix+rateActual*daysToGo)}.`});
+  if(daysSinceSale!==null && daysSinceSale>=3)
+    B.push({w:95, s:`no tickets sold for ${daysSinceSale} days`, t:`<b>No tickets sold for ${daysSinceSale} days.</b> Last sale ${fmtD(lastSale.slice(0,10))} - the current messaging has stopped converting.`});
+  const heavyOver = overdue.filter(heavy);
+  if(heavyOver.length)
+    B.push({w:90, s:`${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}`, t:`<b>${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}</b> - the highest-converting channels: ${heavyOver.slice(0,3).map(nm).join("; ")}.`});
+  if(ideas.length)
+    B.push({w:82, s:`${ideas.length} ${ideas.length===1?"item":"items"} still unwritten`, t:`<b>${ideas.length} ${ideas.length===1?"item is":"items are"} still at "Idea"</b> due within 7 days - nothing written yet: ${ideas.slice(0,3).map(nm).join("; ")}.`});
+  if(review.length)
+    B.push({w:74, s:`${review.length} awaiting sign-off`, t:`<b>${review.length} awaiting review</b> - written but not signed off, so it cannot go out: ${review.slice(0,3).map(i=>nm(i)+(i.owner?" - "+esc(i.owner):"")).join("; ")}.`});
+  const socialOver = overdue.filter(i=>!heavy(i));
+  if(socialOver.length)
+    B.push({w:55, s:`${socialOver.length} overdue social ${socialOver.length===1?"post":"posts"}`, t:`<b>${socialOver.length} overdue social ${socialOver.length===1?"post":"posts"}</b> - lower direct impact, but it is where the audience warms up.`});
+  if(topOwner && soon.length>=4 && topOwner[1]/soon.length>0.5)
+    B.push({w:60, s:`${esc(topOwner[0])} owns ${Math.round(100*topOwner[1]/soon.length)}% of open work`, t:`<b>${esc(topOwner[0])} owns ${topOwner[1]} of ${soon.length} open items</b> (${Math.round(100*topOwner[1]/soon.length)}%) - a single point of failure this week, worth reassigning some.`});
+  if(daysToGo<=7 && !soon.filter(heavy).length)
+    B.push({w:97, s:`no email or WhatsApp booked in the final week`, t:`<b>No email or WhatsApp push scheduled in the final week</b>, when ${finalWeekPct}% of tickets normally land.`});
+  B.sort((a,b)=>b.w-a.w);
+  el.className = VERDICT==="ON TRACK" ? "rn-ok" : VERDICT==="AT RISK" ? "rn-warn" : "";
+  const lead = gapToTarget===0
+    ? `<b>Target hit - ${cur.tix} of ${TARGET}</b> with ${daysToGo} days spare.`
+    : `<b>${VERDICT}</b> - ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. ${gapToTarget} still needed${B.length?`. Biggest blocker: ${B[0].s}.`:"."}`;
+  el.innerHTML = `
+    <div class="rnHead">Right now · ${CUR_MONTH} ${new Date(cur.date).getFullYear()} · updated ${new Date(SNAPSHOT).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+    <div class="rnLine">${lead}</div>
+    <div class="rnNums">
+      <div class="rnNum"><b class="${VCOL}">${cur.tix} / ${TARGET}</b><span>tickets sold</span></div>
+      <div class="rnNum"><b class="${rateActual>=rateNeeded?"green":"coral"}">${rateActual.toFixed(1)} <span style="font-size:14px">vs</span> ${rateNeeded.toFixed(1)}</b><span>selling vs needed per day</span></div>
+      <div class="rnNum"><b class="${projected>=TARGET?"green":"amber"}">${projected}</b><span>projected finish (${projLo}–${projHi})</span></div>
+      <div class="rnNum"><b class="steel">${daysToGo}</b><span>days to ${CUR_DAY}</span></div>
+    </div>
+    ${B.length ? `<div class="rnBlock">What is blocking the target</div><ol>${B.slice(0,3).map(b=>`<li>${b.t}</li>`).join("")}</ol>`
+               : `<div class="rnClear">No blockages detected - plan is on schedule and the run rate covers the gap.</div>`}`;
+})();
+
 // this week — live from the RPM monday.com boards (Newsletters, Social, WhatsApp)
-(async function(){
-  let plan = null;
-  try { const r = await fetch("plan.json", {cache:"no-store"}); if(r.ok) plan = await r.json(); } catch(e){}
+(function(){
+  const plan = PLAN;
   const el = document.getElementById("moves");
   if(!plan || !plan.items || !plan.items.length){ el.innerHTML = ""; return; }
-  // "Scheduled" = queued in the sending tool = done. "Ready to be Scheduled/posted" = still needs action.
-  const isDone = s => { const t = (s||"").trim().toLowerCase();
-    if(t.startsWith("ready")) return false;
-    return t==="scheduled" || /posted|sent|done|completed/.test(t); };
-  const pd = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };  // parse as LOCAL date
+  const isDone = isDoneStatus, pd = pdLocal;
   const wkEnd = new Date(_t0); wkEnd.setDate(wkEnd.getDate()+7);
   const rows = plan.items.filter(i=>{ const d = pd(i.date);
     return (d < _t0 && !isDone(i.status)) || (d >= _t0 && d <= wkEnd); });
