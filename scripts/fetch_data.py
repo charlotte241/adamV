@@ -63,11 +63,22 @@ def main():
     events = list(paged(f"/organizations/{org}/events/", "events",
                         order_by="start_asc", time_filter="all"))
     SINCE = dt.date(2022, 1, 1)          # 2019-2021 excluded (Covid era, free events)
-    rpm = []
+    rpm, manifest = [], []
     for e in events:
         d = dt.date.fromisoformat(e["start"]["local"][:10])
-        if d >= SINCE and d == last_thursday(d):   # monthly RPM only - skips one-off workshops
-            rpm.append((e["id"], d.isoformat(), e["name"]["text"] or ""))
+        name = e["name"]["text"] or ""
+        if d < SINCE:
+            reason = "before 2022"
+        elif d != last_thursday(d):
+            reason = "not a last Thursday"
+        else:
+            reason = None
+            rpm.append((e["id"], d.isoformat(), name))
+        # audit trail: every event the API returned, and why it was kept or dropped,
+        # so a monthly RPM can never silently vanish from the dashboard
+        manifest.append({"date": d.isoformat(), "name": name[:70],
+                         "included": reason is None, "reason": reason})
+    manifest.sort(key=lambda x: x["date"])
     print(f"{len(events)} events found, {len(rpm)} are last-Thursday RPMs")
 
     ZOOM_WORDS = ("zoom", "online", "virtual", "livestream", "live stream")
@@ -164,6 +175,7 @@ def main():
 
     out = {"snapshot": dt.datetime.utcnow().isoformat(timespec="minutes"),
            "sponsors": SPONSOR_DIRECTORY,
+           "eventManifest": manifest,
            "orders": orders}
     with open("data.json", "w") as f:
         json.dump(out, f, separators=(",", ":"))
