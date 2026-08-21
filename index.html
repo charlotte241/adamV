@@ -693,51 +693,63 @@ document.getElementById("logSearch").oninput = ()=>logT.redraw(logFiltered());
 
 // ---------- channels ----------
 (function(){
-  const OWNED={whatsapp:"WhatsApp",mailings:"Newsletter",newsletter:"Newsletter",email:"Newsletter",
-               linkedin:"LinkedIn",website:"Website",instagram:"Instagram",facebook:"Facebook"};
-  const chOf = c => {
-    if(!c) return {n:"Untagged", g:"Untagged"};
-    const k = c.trim().toLowerCase();
-    if(OWNED[k]) return {n:OWNED[k], g:"Owned push"};
-    if(k.includes("mailchimp")) return {n:"Newsletter (Mailchimp)", g:"Owned push"};
-    if(k.startsWith("echckt")) return {n:"Website checkout", g:"Owned push"};
-    if(EB_TAGS[k]) return {n:EB_TAGS[k], g:"Eventbrite / direct"};
-    if(k.includes("emailcampaign")) return {n:"Eventbrite email campaign", g:"Eventbrite / direct"};
-    if(k.startsWith("oddtdt")) return {n:"Shared link", g:"Eventbrite / direct"};
-    if(/^(eb|erel|esc|od|eand|eios|boxoffice)/.test(k)) return {n:"Eventbrite other", g:"Eventbrite / direct"};
-    return {n:c, g:"Promo code"};
+  // Plain-English mapping of Eventbrite internal tracking tags.
+  // oddtdtcreator / oddtdtdirect are links YOU shared - not Eventbrite traffic.
+  const OWNED={whatsapp:"WhatsApp", mailings:"Email newsletter", newsletter:"Email newsletter",
+               email:"Email newsletter", linkedin:"LinkedIn", website:"Your website",
+               instagram:"Instagram", facebook:"Facebook"};
+  const YOU="You brought them", EB="Eventbrite brought them";
+  const chOf = a => {
+    if(!a) return {n:"Untracked", g:YOU};
+    const k=a.trim().toLowerCase();
+    if(OWNED[k]) return {n:OWNED[k], g:YOU};
+    if(k.includes("mailchimp")||k.includes("kajabi")) return {n:"Email newsletter", g:YOU};
+    if(k.startsWith("echckt")) return {n:"Your website", g:YOU};
+    if(k.startsWith("oddtdtcreator")) return {n:"A link you shared", g:YOU};
+    if(k.startsWith("oddtdtdirect")) return {n:"Direct (link, no tag)", g:YOU};
+    if(k.startsWith("oddtdteb")) return {n:"Eventbrite shared it", g:EB};
+    if(k.includes("emailcampaign")||k.includes("consumeremail")||k.includes("follow")) return {n:"Eventbrite emails", g:EB};
+    if(k.startsWith("erel")) return {n:"Eventbrite recommendations", g:EB};
+    if(k.startsWith("ebdsoporgprofile")) return {n:"Eventbrite organiser page", g:EB};
+    if(k.startsWith("eand")||k.startsWith("eios")) return {n:"Eventbrite app", g:EB};
+    if(k.startsWith("eb")||k.startsWith("od")||k.startsWith("esc")) return {n:"Eventbrite search & browse", g:EB};
+    return {n:a, g:EB};
   };
+  const isPromo = o => o.promo !== undefined ? !!o.promo
+    : !!(o.code && !/^(whatsapp|website|linkedin|mailings|newsletter|email|instagram|facebook|eb|od|erel|esc|eand|eios|echckt|boxoffice)/i.test(o.code));
+  const affOf = o => o.aff !== undefined ? o.aff : (isPromo(o) ? "" : (o.code||""));
   const doneEv = EVENTS.filter(e=>new Date(e.date) < _t0);
   const last3 = new Set(doneEv.slice(-3).map(e=>e.eid));
-  const rows = {};
+  const rows={}; let tot=0, l3tot=0, promoTix=0;
   ORDERS.forEach(o=>{
-    const c = chOf(o.code);
-    const rr = rows[c.n] ||= {name:c.n, grp:c.g, tix:0, rev:0, l3:0};
-    rr.tix += o.qty; rr.rev += o.gross; if(last3.has(o.eid)) rr.l3 += o.qty;
+    const c=chOf(affOf(o));
+    const r = rows[c.n] ||= {name:c.n, grp:c.g, tix:0, rev:0, l3:0};
+    r.tix+=o.qty; r.rev+=o.gross; tot+=o.qty;
+    if(last3.has(o.eid)){ r.l3+=o.qty; l3tot+=o.qty; }
+    if(isPromo(o)) promoTix+=o.qty;
   });
-  const list = Object.values(rows);
-  const tot = list.reduce((s,x)=>s+x.tix,0);
-  const grpTot = g => list.filter(x=>x.grp===g).reduce((s,x)=>s+x.tix,0);
-  const owned = list.filter(x=>x.grp==="Owned push").sort((a,b)=>b.tix-a.tix);
-  const tagged = tot - grpTot("Untagged");
+  const list=Object.values(rows);
+  const pc = (n,d) => d ? Math.round(100*n/d)+"%" : "0%";
+  const grpTix = g => list.filter(x=>x.grp===g).reduce((a,x)=>a+x.tix,0);
+  const isNamed = x => x.grp===YOU && !/Untracked|no tag|link you shared/i.test(x.name);
+  const named = list.filter(isNamed).reduce((a,x)=>a+x.tix,0);
+  const topNamed = list.filter(isNamed).sort((a,b)=>b.tix-a.tix)[0];
   fillCards("chCards",[
-    {k:"Tagged sales", v:Math.round(100*tagged/tot)+"%", col:"steel", d:tagged+" of "+tot+" tickets carry a source tag"},
-    {k:"Top owned channel", v:owned.length?owned[0].name:"-", col:"amber", d:owned.length?owned[0].tix+" tickets all-time":"none tagged yet"},
-    {k:"Owned push total", n:grpTot("Owned push"), col:"green", d:"from your own links"},
-    {k:"Eventbrite / direct", n:grpTot("Eventbrite / direct"), col:"plum", d:"their audience, not yours"},
-    {k:"Promo codes", n:grpTot("Promo code"), col:"coral", d:"discount or partner codes"},
+    {k:"You brought them", v:pc(grpTix(YOU),tot), col:"green", d:grpTix(YOU)+" of "+tot+" tickets came through your own promotion"},
+    {k:"Eventbrite brought them", v:pc(grpTix(EB),tot), col:"steel", d:grpTix(EB)+" tickets from Eventbrite search, emails and recommendations"},
+    {k:"Traced to one channel", v:pc(named,tot), col:"amber", d:"the rest arrived via untagged links, so the exact channel is unknown"},
+    {k:"Best known channel", v:topNamed?topNamed.name:"none", col:"plum", d:topNamed?(topNamed.tix+" tickets · "+pc(topNamed.tix,tot)+" of all sales"):"nothing tagged yet"},
+    {k:"Bought with a code", v:pc(promoTix,tot), col:"coral", d:promoTix+" tickets used a discount or partner code"},
   ]);
-  const gBadge = g => g==="Owned push" ? `<span class="badge b-reg">OWNED</span>`
-    : g==="Eventbrite / direct" ? `<span class="badge b-ret">EVENTBRITE</span>`
-    : g==="Promo code" ? `<span class="badge b-loyal">CODE</span>` : `<span class="badge b-wait">UNTAGGED</span>`;
+  const gBadge = g => g===YOU ? `<span class="badge b-reg">YOURS</span>` : `<span class="badge b-ret">EVENTBRITE</span>`;
   renderTable(document.getElementById("chTable"),
-    [{k:"name",h:"Channel",fmt:x=>`<b>${esc(x.name)}</b>`},
-     {k:"grp",h:"Type",fmt:x=>gBadge(x.grp)},
+    [{k:"name",h:"How they found the event",fmt:x=>`<b>${esc(x.name)}</b>`},
+     {k:"grp",h:"Who drove it",fmt:x=>gBadge(x.grp)},
+     {k:"share",h:"Share of all sales",num:1,fmt:x=>pc(x.tix,tot)},
      {k:"tix",h:"Tickets",num:1},
-     {k:"l3",h:"Last 3 events",num:1},
-     {k:"rev",h:"Revenue",num:1,fmt:x=>gbp2(x.rev)},
-     {k:"share",h:"Share",num:1,fmt:x=>(100*x.tix/tot).toFixed(1)+"%"}],
-    list.map(x=>({...x, share:x.tix/tot})), ["tix","desc"]);
+     {k:"l3s",h:"Share, last 3 events",num:1,fmt:x=>pc(x.l3,l3tot)},
+     {k:"rev",h:"Revenue",num:1,fmt:x=>gbp2(x.rev)}],
+    list.map(x=>({...x, share:x.tix/tot, l3s:l3tot?x.l3/l3tot:0})), ["tix","desc"]);
 })();
 
 // ---------- modals ----------
