@@ -136,6 +136,7 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
 <nav>
   <button data-tab="pace" class="active">📈 Pace Tracker</button>
   <button data-tab="events">🏆 All Events</button>
+  <button data-tab="channels">📣 Channels</button>
   <button data-tab="attendees">👥 Attendees</button>
   <button data-tab="log">🧾 Purchase Log</button>
 </nav>
@@ -165,6 +166,17 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <div class="panel chartbox short"><canvas id="cumTixChart"></canvas></div>
   <h2>Every Event — Performance Summary</h2>
   <div class="panel scroll"><table id="evTable"></table></div>
+</section>
+
+<section id="channels">
+  <div class="cards" id="chCards"></div>
+  <h2>Where ticket sales actually come from</h2>
+  <div class="note">Grouped from the tracking tag on every order. <b>Owned push</b> = your own channels via the aff= links.
+  <b>Eventbrite / direct</b> = their search, app, recommendations and shared links. <b>Promo code</b> = a discount or partner code was used.
+  Last-click only: a ticket credited to Website may still have been prompted by a WhatsApp post.</div>
+  <div class="panel scroll"><table id="chTable"></table></div>
+  <div class="flag"><b>Page views are not included.</b> The Eventbrite API exposes orders, not per-channel page views,
+  so this table measures sales only. Views per channel would need Eventbrite reporting exports or tracked short links.</div>
 </section>
 
 <section id="attendees">
@@ -316,12 +328,27 @@ function fillCards(id, cards){
 const zoomCur = ORDERS.filter(o=>o.eid===CURRENT_EID).reduce((s,o)=>s+(o.zoom||0),0);
 const inRoom = cur.tix - zoomCur;
 const tgtAtNow = needNow;
-const [VERDICT, VCOL] = cur.tix >= tgtAtNow ? ["ON TRACK","green"]
-  : cur.tix >= tgtAtNow * 0.9 ? ["AT RISK","amber"] : ["BEHIND","coral"];
+// ---- GRADING RULES (client-facing: never call an event BEHIND when it is
+// performing at or above its own historical norm) ----
+//   TOO EARLY   typical sales by this point are under 5 tickets - no signal yet
+//   ON TRACK    at or above the line needed to finish on TARGET
+//   AHEAD OF NORMAL   beating a typical event, but TARGET needs more than typical
+//   ON NORMAL PACE    within 15% of a typical event at this point
+//   BEHIND      more than 15% below a typical event - genuine underperformance
+function grade(sold, i){
+  const nrm = avgCurve[i], tgt = Math.round(targetCurve[i]);
+  if(nrm < 5)            return ["TOO EARLY","steel","b-wait"];
+  if(sold >= tgt)        return ["ON TRACK","green","b-good"];
+  if(sold >= nrm)        return ["AHEAD OF NORMAL","amber","b-warn"];
+  if(sold >= nrm*0.85)   return ["ON NORMAL PACE","amber","b-warn"];
+  return ["BEHIND","coral","b-bad"];
+}
+const [VERDICT, VCOL] = grade(cur.tix, idxNow);
+const normNow = Math.round(avgCurve[idxNow]);
 const _cd = new Date(cur.date);
 const lyEv = EVENTS.find(e=>{const d=new Date(e.date); return d.getFullYear()===_cd.getFullYear()-1 && d.getMonth()===_cd.getMonth();});
 fillCards("paceCards",[
-  {k:"Verdict", v:VERDICT, col:VCOL, d:"need "+tgtAtNow+" by today for "+TARGET+" · normal at this point is "+Math.round(avgCurve[idxNow])},
+  {k:"Verdict", v:VERDICT, col:VCOL, d:cur.tix+" sold · typical here is "+normNow+" · "+tgtAtNow+" needed for "+TARGET},
   {k:"Sold · "+CUR_TAG, v:cur.tix+" / "+TARGET, col:"coral", d:inRoom+" in-room · "+zoomCur+" Zoom · "+gbp2(cur.gross)+" gross"},
   {k:"Days to go", n:daysToGo, col:"amber", d:CUR_DAY+", 7pm"},
   {k:"Projected finish", v:String(projected), col:projected>=TARGET?"green":projected>=avgFinal?"amber":"coral", d:"likely "+projLo+"–"+projHi+" · target "+TARGET+" · avg "+avgFinal},
@@ -382,10 +409,14 @@ fillCards("paceCards",[
   if(daysToGo<=7 && !soon.filter(heavy).length)
     B.push({w:97, s:`no email or WhatsApp booked in the final week`, t:`<b>No email or WhatsApp push scheduled in the final week</b>, when ${finalWeekPct}% of tickets normally land.`});
   B.sort((a,b)=>b.w-a.w);
-  el.className = VERDICT==="ON TRACK" ? "rn-ok" : VERDICT==="AT RISK" ? "rn-warn" : "";
+  el.className = VERDICT==="ON TRACK" ? "rn-ok" : VERDICT==="BEHIND" ? "" : "rn-warn";
   const lead = gapToTarget===0
-    ? `<b>Target hit - ${cur.tix} of ${TARGET}</b> with ${daysToGo} days spare.`
-    : `<b>${VERDICT}</b> - ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. ${gapToTarget} still needed${B.length?`. Biggest blocker: ${B[0].s}.`:"."}`;
+    ? `<b>Target hit — ${cur.tix} of ${TARGET}</b> with ${daysToGo} days spare.`
+    : VERDICT==="TOO EARLY"
+    ? `<b>Too early to call.</b> ${cur.tix} of ${TARGET} sold, ${daysToGo} days out — a typical event has only ${normNow} by this point, so there is no meaningful signal yet.`
+    : VERDICT==="ON TRACK"
+    ? `<b>On track for ${TARGET}.</b> ${cur.tix} sold with ${daysToGo} days to go, against the ${tgtAtNow} needed by today.`
+    : `<b>${VERDICT}</b> — ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. A typical event has ${normNow} by now; ${TARGET} needs ${tgtAtNow}${B.length?`. Biggest blocker: ${B[0].s}`:""}.`;
   el.innerHTML = `
     <div class="rnHead">Right now · ${CUR_MONTH} ${new Date(cur.date).getFullYear()} · updated ${new Date(SNAPSHOT).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
     <div class="rnLine">${lead}</div>
@@ -456,7 +487,7 @@ cps.forEach(d=>{
   const passed = d >= daysToGo;
   let actual="—", st=`<span class="badge b-wait">UPCOMING</span>`;
   if(passed){ actual = curCurve[i];
-    st = actual>=tgt ? `<span class="badge b-good">ON TRACK</span>` : actual>=tgt*0.9 ? `<span class="badge b-warn">AT RISK</span>` : `<span class="badge b-bad">BEHIND</span>`; }
+    const g = grade(actual, i); st = `<span class="badge ${g[2]}">${g[0]}</span>`; }
   cpRows += `<tr><td>${d===0?"Event day":d+" days"}</td><td>${dt.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</td><td class="num">${avg}</td><td class="num">${tgt}</td><td class="num"><b>${actual}</b></td><td>${st}</td></tr>`;
 });
 document.getElementById("cpTable").innerHTML = cpRows;
@@ -648,6 +679,55 @@ function logFiltered(){
 const logT = renderTable(document.getElementById("logTable"), logCols, LOG, ["dt","desc"], r=>openBuyer(r.email));
 sel.onchange = ()=>logT.redraw(logFiltered());
 document.getElementById("logSearch").oninput = ()=>logT.redraw(logFiltered());
+
+// ---------- channels ----------
+(function(){
+  const OWNED={whatsapp:"WhatsApp",mailings:"Newsletter",newsletter:"Newsletter",email:"Newsletter",
+               linkedin:"LinkedIn",website:"Website",instagram:"Instagram",facebook:"Facebook"};
+  const chOf = c => {
+    if(!c) return {n:"Untagged", g:"Untagged"};
+    const k = c.trim().toLowerCase();
+    if(OWNED[k]) return {n:OWNED[k], g:"Owned push"};
+    if(k.includes("mailchimp")) return {n:"Newsletter (Mailchimp)", g:"Owned push"};
+    if(k.startsWith("echckt")) return {n:"Website checkout", g:"Owned push"};
+    if(EB_TAGS[k]) return {n:EB_TAGS[k], g:"Eventbrite / direct"};
+    if(k.includes("emailcampaign")) return {n:"Eventbrite email campaign", g:"Eventbrite / direct"};
+    if(k.startsWith("oddtdt")) return {n:"Shared link", g:"Eventbrite / direct"};
+    if(/^(eb|erel|esc|od|eand|eios|boxoffice)/.test(k)) return {n:"Eventbrite other", g:"Eventbrite / direct"};
+    return {n:c, g:"Promo code"};
+  };
+  const doneEv = EVENTS.filter(e=>new Date(e.date) < _t0);
+  const last3 = new Set(doneEv.slice(-3).map(e=>e.eid));
+  const rows = {};
+  ORDERS.forEach(o=>{
+    const c = chOf(o.code);
+    const rr = rows[c.n] ||= {name:c.n, grp:c.g, tix:0, rev:0, l3:0};
+    rr.tix += o.qty; rr.rev += o.gross; if(last3.has(o.eid)) rr.l3 += o.qty;
+  });
+  const list = Object.values(rows);
+  const tot = list.reduce((s,x)=>s+x.tix,0);
+  const grpTot = g => list.filter(x=>x.grp===g).reduce((s,x)=>s+x.tix,0);
+  const owned = list.filter(x=>x.grp==="Owned push").sort((a,b)=>b.tix-a.tix);
+  const tagged = tot - grpTot("Untagged");
+  fillCards("chCards",[
+    {k:"Tagged sales", v:Math.round(100*tagged/tot)+"%", col:"steel", d:tagged+" of "+tot+" tickets carry a source tag"},
+    {k:"Top owned channel", v:owned.length?owned[0].name:"-", col:"amber", d:owned.length?owned[0].tix+" tickets all-time":"none tagged yet"},
+    {k:"Owned push total", n:grpTot("Owned push"), col:"green", d:"from your own links"},
+    {k:"Eventbrite / direct", n:grpTot("Eventbrite / direct"), col:"plum", d:"their audience, not yours"},
+    {k:"Promo codes", n:grpTot("Promo code"), col:"coral", d:"discount or partner codes"},
+  ]);
+  const gBadge = g => g==="Owned push" ? `<span class="badge b-reg">OWNED</span>`
+    : g==="Eventbrite / direct" ? `<span class="badge b-ret">EVENTBRITE</span>`
+    : g==="Promo code" ? `<span class="badge b-loyal">CODE</span>` : `<span class="badge b-wait">UNTAGGED</span>`;
+  renderTable(document.getElementById("chTable"),
+    [{k:"name",h:"Channel",fmt:x=>`<b>${esc(x.name)}</b>`},
+     {k:"grp",h:"Type",fmt:x=>gBadge(x.grp)},
+     {k:"tix",h:"Tickets",num:1},
+     {k:"l3",h:"Last 3 events",num:1},
+     {k:"rev",h:"Revenue",num:1,fmt:x=>gbp2(x.rev)},
+     {k:"share",h:"Share",num:1,fmt:x=>(100*x.tix/tot).toFixed(1)+"%"}],
+    list.map(x=>({...x, share:x.tix/tot})), ["tix","desc"]);
+})();
 
 // ---------- modals ----------
 const overlay = document.getElementById("overlay"), modal = document.getElementById("modal");
