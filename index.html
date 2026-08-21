@@ -139,12 +139,12 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <button data-tab="channels">📣 Channels</button>
   <button data-tab="attendees">👥 Attendees</button>
   <button data-tab="log">🧾 Purchase Log</button>
+  <button data-tab="delivery">🔧 Delivery</button>
 </nav>
 
 <section id="pace" class="active">
   <div class="cards" id="paceCards"></div>
   <div class="flag" id="paceFlag"></div>
-  <div id="moves" style="margin:18px 0"></div>
   <h2>Sales Pace vs Past RPM Events</h2>
   <div class="note">Cumulative tickets by days before event day. Faint lines = last 12 monthly RPMs (hover to identify). Green = all-time historic average · dashed amber = the 50-ticket mission curve · coral = current event, live. Click legend items to show/hide.</div>
   <div class="panel chartbox"><canvas id="paceChart"></canvas></div>
@@ -194,6 +194,11 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <select id="logEvent"></select>
   <input type="search" id="logSearch" placeholder="Search buyer…">
   <div class="panel scroll"><table id="logTable"></table></div>
+</section>
+
+<section id="delivery">
+  <div id="opsBlockers"></div>
+  <div id="moves" style="margin:22px 0 0"></div>
 </section>
 
 <footer>
@@ -386,29 +391,31 @@ fillCards("paceCards",[
   // The late surge is already inside stillToCome, so never extrapolate the current
   // daily rate in a straight line — that understates the finish and misreads normal pace as failure.
   if(shortfall > 0)
-    B.push({w:100, s:`a typical finish lands ${Math.round(cur.tix+stillToCome)}, ${shortfall} short of ${TARGET}`, t:`<b>A typical finish from here lands on ${Math.round(cur.tix+stillToCome)} — ${shortfall} short of ${TARGET}.</b> The usual late surge (${Math.round(stillToCome)} tickets in the last ${daysToGo} days) is already allowed for, so ${TARGET} needs an above-average close: ${hitRate} of the last ${histCurves.length} events managed it.`});
+    B.push({k:"client", w:100, s:`a typical finish lands ${Math.round(cur.tix+stillToCome)}, ${shortfall} short of ${TARGET}`, t:`<b>A typical finish from here lands on ${Math.round(cur.tix+stillToCome)} — ${shortfall} short of ${TARGET}.</b> The usual late surge (${Math.round(stillToCome)} tickets in the last ${daysToGo} days) is already allowed for, so ${TARGET} needs an above-average close: ${hitRate} of the last ${histCurves.length} events managed it.`});
   if(typWin > 0 && soldWin < typWin*0.7)
-    B.push({w:88, s:`last 7 days ran ${soldWin} against ${Math.round(typWin)} typical`, t:`<b>Momentum is below par — ${soldWin} tickets in the last 7 days against ${Math.round(typWin)} typical at this stage.</b>`});
+    B.push({k:"client", w:88, s:`last 7 days ran ${soldWin} against ${Math.round(typWin)} typical`, t:`<b>Momentum is below par — ${soldWin} tickets in the last 7 days against ${Math.round(typWin)} typical at this stage.</b>`});
   if(daysSinceSale!==null && daysSinceSale>=3)
-    B.push({w:95, s:`no tickets sold for ${daysSinceSale} days`, t:`<b>No tickets sold for ${daysSinceSale} days.</b> Last sale ${fmtD(lastSale.slice(0,10))} - the current messaging has stopped converting.`});
+    B.push({k:"client", w:95, s:`no tickets sold for ${daysSinceSale} days`, t:`<b>No tickets sold for ${daysSinceSale} days.</b> Last sale ${fmtD(lastSale.slice(0,10))} - the current messaging has stopped converting.`});
   const heavyOver = overdue.filter(heavy);
   if(heavyOver.length)
-    B.push({w:90, s:`${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}`, t:`<b>${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}</b> - your direct-to-audience channels: ${heavyOver.slice(0,3).map(nm).join("; ")}.`});
+    B.push({k:"ops", w:90, s:`${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}`, t:`<b>${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}</b> - your direct-to-audience channels: ${heavyOver.slice(0,3).map(nm).join("; ")}.`});
   if(ideas.length)
-    B.push({w:82, s:`${ideas.length} ${ideas.length===1?"item":"items"} still unwritten`, t:`<b>${ideas.length} ${ideas.length===1?"item has":"items have"} no content yet</b> due within 7 days: ${ideas.slice(0,3).map(nm).join("; ")}.`});
+    B.push({k:"ops", w:82, s:`${ideas.length} ${ideas.length===1?"item":"items"} still unwritten`, t:`<b>${ideas.length} ${ideas.length===1?"item has":"items have"} no content yet</b> due within 7 days: ${ideas.slice(0,3).map(nm).join("; ")}.`});
   if(review.length)
-    B.push({w:74, s:`${review.length} awaiting sign-off`, t:`<b>${review.length} awaiting review</b> - written but not signed off, so it cannot go out: ${review.slice(0,3).map(i=>nm(i)+(i.owner?" - "+esc(i.owner):"")).join("; ")}.`});
+    B.push({k:"ops", w:74, s:`${review.length} awaiting sign-off`, t:`<b>${review.length} awaiting review</b> - written but not signed off, so it cannot go out: ${review.slice(0,3).map(i=>nm(i)+(i.owner?" - "+esc(i.owner):"")).join("; ")}.`});
   const stuck = soon.filter(i=>/stuck|missed|blocked/i.test(i.status||""));
   if(stuck.length)
-    B.push({w:92, s:`${stuck.length} flagged stuck or missed`, t:`<b>${stuck.length} ${stuck.length===1?"item":"items"} flagged stuck or missed by the team</b> - someone has already raised these: ${stuck.slice(0,3).map(i=>nm(i)+" ("+esc(i.status)+")").join("; ")}.`});
+    B.push({k:"ops", w:92, s:`${stuck.length} flagged stuck or missed`, t:`<b>${stuck.length} ${stuck.length===1?"item":"items"} flagged stuck or missed by the team</b> - someone has already raised these: ${stuck.slice(0,3).map(i=>nm(i)+" ("+esc(i.status)+")").join("; ")}.`});
   const socialOver = overdue.filter(i=>!heavy(i));
   if(socialOver.length)
-    B.push({w:55, s:`${socialOver.length} overdue social ${socialOver.length===1?"post":"posts"}`, t:`<b>${socialOver.length} overdue social ${socialOver.length===1?"post":"posts"}</b> - lower direct impact, but it is where the audience warms up.`});
+    B.push({k:"ops", w:55, s:`${socialOver.length} overdue social ${socialOver.length===1?"post":"posts"}`, t:`<b>${socialOver.length} overdue social ${socialOver.length===1?"post":"posts"}</b> - lower direct impact, but it is where the audience warms up.`});
   if(topOwner && soon.length>=4 && topOwner[1]/soon.length>0.5)
-    B.push({w:60, s:`${esc(topOwner[0])} owns ${Math.round(100*topOwner[1]/soon.length)}% of open work`, t:`<b>${esc(topOwner[0])} owns ${topOwner[1]} of ${soon.length} open items</b> (${Math.round(100*topOwner[1]/soon.length)}%) - a single point of failure this week, worth reassigning some.`});
+    B.push({k:"ops", w:60, s:`${esc(topOwner[0])} owns ${Math.round(100*topOwner[1]/soon.length)}% of open work`, t:`<b>${esc(topOwner[0])} owns ${topOwner[1]} of ${soon.length} open items</b> (${Math.round(100*topOwner[1]/soon.length)}%) - a single point of failure this week, worth reassigning some.`});
   if(daysToGo<=7 && !soon.filter(heavy).length)
     B.push({w:97, s:`no email or WhatsApp booked in the final week`, t:`<b>No email or WhatsApp push scheduled in the final week</b>, when ${finalWeekPct}% of tickets normally land.`});
   B.sort((a,b)=>b.w-a.w);
+  const BC = B.filter(x=>x.k==="client");
+  const BO = B.filter(x=>x.k==="ops");
   el.className = VERDICT==="ON TRACK" ? "rn-ok" : VERDICT==="BEHIND" ? "" : "rn-warn";
   const lead = gapToTarget===0
     ? `<b>Target hit — ${cur.tix} of ${TARGET}</b> with ${daysToGo} days spare.`
@@ -416,7 +423,7 @@ fillCards("paceCards",[
     ? `<b>Too early to call.</b> ${cur.tix} of ${TARGET} sold, ${daysToGo} days out — a typical event has only ${normNow} by this point, so there is no meaningful signal yet.`
     : VERDICT==="ON TRACK"
     ? `<b>On track for ${TARGET}.</b> ${cur.tix} sold with ${daysToGo} days to go, against the ${tgtAtNow} needed by today.`
-    : `<b>${VERDICT}</b> — ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. A typical event has ${normNow} by now; ${TARGET} needs ${tgtAtNow}${B.length?`. Biggest blocker: ${B[0].s}`:""}.`;
+    : `<b>${VERDICT}</b> — ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. A typical event has ${normNow} by now; ${TARGET} needs ${tgtAtNow}${BC.length?`. Biggest blocker: ${BC[0].s}`:""}.`;
   el.innerHTML = `
     <div class="rnHead">Right now · ${CUR_MONTH} ${new Date(cur.date).getFullYear()} · updated ${new Date(SNAPSHOT).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
     <div class="rnLine">${lead}</div>
@@ -426,8 +433,12 @@ fillCards("paceCards",[
       <div class="rnNum"><b class="${projected>=TARGET?"green":"amber"}">${projected}</b><span>projected finish (${projLo}–${projHi})</span></div>
       <div class="rnNum"><b class="steel">${daysToGo}</b><span>days to ${CUR_DAY}</span></div>
     </div>
-    ${B.length ? `<div class="rnBlock">What is blocking the target</div><ol>${B.slice(0,3).map(b=>`<li>${b.t}</li>`).join("")}</ol>`
+    ${BC.length ? `<div class="rnBlock">What is affecting the target</div><ol>${BC.slice(0,3).map(b=>`<li>${b.t}</li>`).join("")}</ol>`
                : `<div class="rnClear">No blockages detected - plan is on schedule and the run rate covers the gap.</div>`}`;
+  const ops = document.getElementById("opsBlockers");
+  if(ops) ops.innerHTML = BO.length
+    ? `<h2 style="margin-top:0">Delivery blockers</h2><div class="note">Internal only. What is slowing the plan down, ranked by impact on ticket sales.</div><ol style="padding-left:20px;font-size:13.5px;color:var(--muted)">${BO.map(b=>`<li style="margin:6px 0">${b.t}</li>`).join("")}</ol>`
+    : `<h2 style="margin-top:0">Delivery blockers</h2><div class="rnClear">Nothing blocked - every item is written, approved and scheduled.</div>`;
 })();
 
 // this week — live from the RPM monday.com boards (Newsletters, Social, WhatsApp)
