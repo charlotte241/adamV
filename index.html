@@ -136,7 +136,6 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
 <nav>
   <button data-tab="pace" class="active">📈 Pace Tracker</button>
   <button data-tab="events">🏆 All Events</button>
-  <button data-tab="channels">📣 Channels</button>
   <button data-tab="attendees">👥 Attendees</button>
   <button data-tab="log">🧾 Purchase Log</button>
   <button data-tab="delivery">🔧 Delivery</button>
@@ -168,16 +167,6 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <div class="panel scroll"><table id="evTable"></table></div>
 </section>
 
-<section id="channels">
-  <div class="cards" id="chCards"></div>
-  <h2>Where ticket sales actually come from</h2>
-  <div class="note">Grouped from the tracking tag on every order. <b>Owned push</b> = your own channels via the aff= links.
-  <b>Eventbrite / direct</b> = their search, app, recommendations and shared links. <b>Promo code</b> = a discount or partner code was used.
-  Last-click only: a ticket credited to Website may still have been prompted by a WhatsApp post.</div>
-  <div class="panel scroll"><table id="chTable"></table></div>
-  <div class="flag"><b>Page views are not included.</b> The Eventbrite API exposes orders, not per-channel page views,
-  so this table measures sales only. Views per channel would need Eventbrite reporting exports or tracked short links.</div>
-</section>
 
 <section id="attendees">
   <div class="cards" id="atCards"></div>
@@ -199,6 +188,17 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
 <section id="delivery">
   <div id="opsBlockers"></div>
   <div id="moves" style="margin:22px 0 0"></div>
+
+  <div style="margin-top:34px;border-top:1px solid var(--line);padding-top:22px">
+  <div class="cards" id="chCards"></div>
+  <h2>Channel signals (indicative)</h2>
+  <div class="note">Grouped from the tracking tag on every order. <b>Owned push</b> = your own channels via the aff= links.
+  <b>Eventbrite / direct</b> = their search, app, recommendations and shared links. <b>Promo code</b> = a discount or partner code was used.
+  Last-click only: a ticket credited to Website may still have been prompted by a WhatsApp post.</div>
+  <div class="panel scroll"><table id="chTable"></table></div>
+  <div class="flag"><b>Page views are not included.</b> The Eventbrite API exposes orders, not per-channel page views,
+  so this table measures sales only. Views per channel would need Eventbrite reporting exports or tracked short links.</div>
+  </div>
 </section>
 
 <footer>
@@ -696,16 +696,16 @@ document.getElementById("logSearch").oninput = ()=>logT.redraw(logFiltered());
   // Plain-English mapping of Eventbrite internal tracking tags.
   // oddtdtcreator / oddtdtdirect are links YOU shared - not Eventbrite traffic.
   const OWNED={whatsapp:"WhatsApp", mailings:"Email newsletter", newsletter:"Email newsletter",
-               email:"Email newsletter", linkedin:"LinkedIn", website:"Your website",
+               email:"Email newsletter", linkedin:"LinkedIn", website:"RPM website",
                instagram:"Instagram", facebook:"Facebook"};
-  const YOU="You brought them", EB="Eventbrite brought them";
+  const YOU="RPM brought them", EB="Eventbrite brought them";
   const chOf = a => {
     if(!a) return {n:"Untracked", g:YOU};
     const k=a.trim().toLowerCase();
     if(OWNED[k]) return {n:OWNED[k], g:YOU};
     if(k.includes("mailchimp")||k.includes("kajabi")) return {n:"Email newsletter", g:YOU};
-    if(k.startsWith("echckt")) return {n:"Your website", g:YOU};
-    if(k.startsWith("oddtdtcreator")) return {n:"A link you shared", g:YOU};
+    if(k.startsWith("echckt")) return {n:"RPM website", g:YOU};
+    if(k.startsWith("oddtdtcreator")) return {n:"A link RPM shared", g:YOU};
     if(k.startsWith("oddtdtdirect")) return {n:"Direct (link, no tag)", g:YOU};
     if(k.startsWith("oddtdteb")) return {n:"Eventbrite shared it", g:EB};
     if(k.includes("emailcampaign")||k.includes("consumeremail")||k.includes("follow")) return {n:"Eventbrite emails", g:EB};
@@ -732,8 +732,9 @@ document.getElementById("logSearch").oninput = ()=>logT.redraw(logFiltered());
   const pc = (n,d) => d ? Math.round(100*n/d)+"%" : "0%";
   const grpTix = g => list.filter(x=>x.grp===g).reduce((a,x)=>a+x.tix,0);
   const isNamed = x => x.grp===YOU && !/Untracked|no tag|link you shared/i.test(x.name);
-  const named = list.filter(isNamed).reduce((a,x)=>a+x.tix,0);
-  const topNamed = list.filter(isNamed).sort((a,b)=>b.tix-a.tix)[0];
+  const KNOWN = new Set(["WhatsApp","Email newsletter","LinkedIn","RPM website","Instagram","Facebook"]);
+  const named = list.filter(x=>KNOWN.has(x.name)).reduce((a,x)=>a+x.tix,0);
+  const topNamed = list.filter(x=>KNOWN.has(x.name)).sort((a,b)=>b.tix-a.tix)[0];
   fillCards("chCards",[
     {k:"You brought them", v:pc(grpTix(YOU),tot), col:"green", d:grpTix(YOU)+" of "+tot+" tickets came through your own promotion"},
     {k:"Eventbrite brought them", v:pc(grpTix(EB),tot), col:"steel", d:grpTix(EB)+" tickets from Eventbrite search, emails and recommendations"},
@@ -741,7 +742,7 @@ document.getElementById("logSearch").oninput = ()=>logT.redraw(logFiltered());
     {k:"Best known channel", v:topNamed?topNamed.name:"none", col:"plum", d:topNamed?(topNamed.tix+" tickets · "+pc(topNamed.tix,tot)+" of all sales"):"nothing tagged yet"},
     {k:"Bought with a code", v:pc(promoTix,tot), col:"coral", d:promoTix+" tickets used a discount or partner code"},
   ]);
-  const gBadge = g => g===YOU ? `<span class="badge b-reg">YOURS</span>` : `<span class="badge b-ret">EVENTBRITE</span>`;
+  const gBadge = g => g===YOU ? `<span class="badge b-reg">RPM</span>` : `<span class="badge b-ret">EVENTBRITE</span>`;
   renderTable(document.getElementById("chTable"),
     [{k:"name",h:"How they found the event",fmt:x=>`<b>${esc(x.name)}</b>`},
      {k:"grp",h:"Who drove it",fmt:x=>gBadge(x.grp)},
