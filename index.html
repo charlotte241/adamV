@@ -350,14 +350,23 @@ fillCards("paceCards",[
   const owners = {}; soon.forEach(i=>owners[i.owner||"unassigned"]=(owners[i.owner||"unassigned"]||0)+1);
   const topOwner = Object.entries(owners).sort((a,b)=>b[1]-a[1])[0];
   const nm = i => esc(i.name)+" ("+pdLocal(i.date).toLocaleDateString("en-GB",{day:"numeric",month:"short"})+")";
+  const winLo = Math.max(0, idxNow-7);
+  const soldWin = curCurve[idxNow] - curCurve[winLo];
+  const typWin = histCurves.reduce((a,c)=>a+(c[idxNow]-c[winLo]),0)/histCurves.length;
+  const hitRate = histCurves.filter(c=>c[60]>=TARGET).length;
+  const shortfall = gapToTarget - Math.round(stillToCome);
   const B = [];
-  if(rateNeeded>0 && rateActual<rateNeeded)
-    B.push({w:100, s:`pace is ${rateActual.toFixed(1)}/day against ${rateNeeded.toFixed(1)} needed`, t:`<b>Selling ${rateActual.toFixed(1)}/day, need ${rateNeeded.toFixed(1)}/day.</b> ${gapToTarget} tickets in ${daysToGo} days - current pace delivers about ${Math.round(cur.tix+rateActual*daysToGo)}.`});
+  // The late surge is already inside stillToCome, so never extrapolate the current
+  // daily rate in a straight line — that understates the finish and misreads normal pace as failure.
+  if(shortfall > 0)
+    B.push({w:100, s:`a typical finish lands ${Math.round(cur.tix+stillToCome)}, ${shortfall} short of ${TARGET}`, t:`<b>A typical finish from here lands on ${Math.round(cur.tix+stillToCome)} — ${shortfall} short of ${TARGET}.</b> The usual late surge (${Math.round(stillToCome)} tickets in the last ${daysToGo} days) is already allowed for, so ${TARGET} needs an above-average close: ${hitRate} of the last ${histCurves.length} events managed it.`});
+  if(typWin > 0 && soldWin < typWin*0.7)
+    B.push({w:88, s:`last 7 days ran ${soldWin} against ${Math.round(typWin)} typical`, t:`<b>Momentum is below par — ${soldWin} tickets in the last 7 days against ${Math.round(typWin)} typical at this stage.</b>`});
   if(daysSinceSale!==null && daysSinceSale>=3)
     B.push({w:95, s:`no tickets sold for ${daysSinceSale} days`, t:`<b>No tickets sold for ${daysSinceSale} days.</b> Last sale ${fmtD(lastSale.slice(0,10))} - the current messaging has stopped converting.`});
   const heavyOver = overdue.filter(heavy);
   if(heavyOver.length)
-    B.push({w:90, s:`${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}`, t:`<b>${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}</b> - the highest-converting channels: ${heavyOver.slice(0,3).map(nm).join("; ")}.`});
+    B.push({w:90, s:`${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}`, t:`<b>${heavyOver.length} overdue email/WhatsApp ${heavyOver.length===1?"push":"pushes"}</b> - your direct-to-audience channels: ${heavyOver.slice(0,3).map(nm).join("; ")}.`});
   if(ideas.length)
     B.push({w:82, s:`${ideas.length} ${ideas.length===1?"item":"items"} still unwritten`, t:`<b>${ideas.length} ${ideas.length===1?"item has":"items have"} no content yet</b> due within 7 days: ${ideas.slice(0,3).map(nm).join("; ")}.`});
   if(review.length)
@@ -382,7 +391,7 @@ fillCards("paceCards",[
     <div class="rnLine">${lead}</div>
     <div class="rnNums">
       <div class="rnNum"><b class="${VCOL}">${cur.tix} / ${TARGET}</b><span>tickets sold</span></div>
-      <div class="rnNum"><b class="${rateActual>=rateNeeded?"green":"coral"}">${rateActual.toFixed(1)} <span style="font-size:14px">vs</span> ${rateNeeded.toFixed(1)}</b><span>selling vs needed per day</span></div>
+      <div class="rnNum"><b class="${soldWin>=typWin?"green":"coral"}">${soldWin} <span style="font-size:14px">vs</span> ${Math.round(typWin)}</b><span>last 7 days vs typical</span></div>
       <div class="rnNum"><b class="${projected>=TARGET?"green":"amber"}">${projected}</b><span>projected finish (${projLo}–${projHi})</span></div>
       <div class="rnNum"><b class="steel">${daysToGo}</b><span>days to ${CUR_DAY}</span></div>
     </div>
