@@ -16,13 +16,39 @@ if not TOKEN:
     sys.exit(0)
 
 BOARDS = {
+    # column ids verified against the live boards - they have been restructured once already
     "18393775762": {"label": "Newsletter", "date": "date4", "alt_date": "date_mkz8qkg8",
-                    "status": "status", "owner": "multiple_person_mm1r847t", "channel": None},
-    "18393778157": {"label": "Social", "date": "date_mkvvc2q4", "alt_date": None,
-                    "status": "color_mkvv1ny9", "owner": "multiple_person_mkvv1k99", "channel": "color_mm006mmw"},
+                    "status": "status", "owner": "checked_by3__1", "channel": None},
+    "18393778157": {"label": "Social", "date": "date_mkvvc2q4", "alt_date": "date_mkzvrajt",
+                    "status": "color_mm0mfs5m", "owner": "multiple_person_mm6daz4z",
+                    "channel": "color_mm006mmw"},
     "18393924530": {"label": "WhatsApp", "date": "date_mkvvc2q4", "alt_date": None,
                     "status": "color_mkvv1ny9", "owner": "multiple_person_mkvv1k99", "channel": None},
 }
+
+# Who needs to act, per the agreed rules:
+#   Lorenza posts          -> Lorenza, always
+#   Needs Review / CHANGES -> Henry, the checker
+#   Done on Social         -> nobody, it is finished
+#   Done on WhatsApp       -> whoever posted it, Eni by default
+#   Done on Newsletter     -> Hannah
+#   Anything still open    -> Hannah
+DEFAULT_OWNER, CHECKER, WHATSAPP_POSTER = "Hannah", "Henry", "Eni"
+DONE = {"scheduled", "posted", "done", "sent", "completed"}
+
+def responsible(board, name, status, board_owner):
+    s = (status or "").strip().lower()
+    if "lorenza" in (name or "").lower():
+        return "Lorenza"
+    if "review" in s or "change" in s:
+        return CHECKER
+    if s in DONE:
+        if board == "Social":
+            return ""
+        if board == "WhatsApp":
+            return board_owner or WHATSAPP_POSTER
+        return DEFAULT_OWNER
+    return DEFAULT_OWNER
 
 query = """{ boards(ids:[18393775762,18393778157,18393924530]) {
   id items_page(limit:500){ items { name column_values { id text } } } } }"""
@@ -65,10 +91,12 @@ for b in resp["data"]["boards"]:
         if not (lo <= d <= hi):
             continue
         owner_full = cv.get(cfg["owner"], "")
-        owner = owner_full.split(",")[0].split()[0] if owner_full else ""
+        board_owner = owner_full.split(",")[0].split()[0] if owner_full else ""
+        status_val = cv.get(cfg["status"], "")
+        owner = responsible(cfg["label"], it["name"], status_val, board_owner)
         items.append({
             "board": cfg["label"], "name": it["name"], "date": d.isoformat(),
-            "status": cv.get(cfg["status"], ""), "owner": owner,
+            "status": status_val, "owner": owner, "boardOwner": board_owner,
             "channel": (cv.get(cfg["channel"], "") if cfg["channel"] else "") or cfg["label"],
         })
 items.sort(key=lambda x: x["date"])
