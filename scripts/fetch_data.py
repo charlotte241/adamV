@@ -138,21 +138,23 @@ def main():
             net = round(gross - mv("eventbrite_fee") - mv("payment_fee") - mv("tax"), 2)
             att = [a for a in (o.get("attendees") or []) if not a.get("cancelled")]
             qty = len(att) or 1
-            city, zoom, code = "", 0, ""
+            city, zoom, promo, aff = "", 0, "", ""
             for a in att:
                 tc = (a.get("ticket_class_name") or "").lower()
                 if any(w in tc for w in ZOOM_WORDS):
                     zoom += 1
-                if not code:
+                if not promo:
                     pc = a.get("promotional_code")
-                    code = (pc.get("code", "") if isinstance(pc, dict) else "") or a.get("affiliate") or ""
+                    promo = pc.get("code", "") if isinstance(pc, dict) else ""
+                if not aff:
+                    aff = a.get("affiliate") or ""
                 if not city:
                     home = ((a.get("profile") or {}).get("addresses") or {}).get("home") or {}
                     city = home.get("city") or ""
             email = (o.get("email") or "").strip().lower()
             fullname = f"{(o.get('first_name') or '').strip()} {(o.get('last_name') or '').strip()}".strip().lower()
             sponsor = (email in SPONSOR_EMAILS or fullname in SPONSOR_NAMES
-                       or code.lower().startswith("sponsor"))
+                       or (promo or "").lower().startswith("sponsor"))
             orders.append({
                 "oid": o["id"],
                 "dt": o["created"][:19].replace("T", " "),
@@ -161,7 +163,8 @@ def main():
                 "email": email,
                 "city": city,
                 "eid": eid, "edate": edate, "ename": ename,
-                "qty": qty, "zoom": zoom, "code": code, "sp": 1 if sponsor else 0,
+                "qty": qty, "zoom": zoom, "code": promo or aff,
+                "promo": promo, "aff": aff, "sp": 1 if sponsor else 0,
                 "status": "Free Order" if gross == 0 else "Eventbrite Completed",
                 "gross": round(gross, 2), "net": net,
             })
