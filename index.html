@@ -350,10 +350,18 @@ function grade(sold, i){
 }
 const [VERDICT, VCOL] = grade(cur.tix, idxNow);
 const normNow = Math.round(avgCurve[idxNow]);
+// Two separate comparisons, always stated together so they cannot read as a contradiction:
+//   normNow  = where a typical RPM is at this point
+//   tgtAtNow = where you must be at this point for TARGET - a checkpoint, NOT tickets outstanding
+const vsNormal = cur.tix > normNow
+  ? `That is ahead of a typical event, which has ${normNow} by now`
+  : cur.tix === normNow
+  ? `That is exactly where a typical event is by now`
+  : `That is behind a typical event, which has ${normNow} by now`;
 const _cd = new Date(cur.date);
 const lyEv = EVENTS.find(e=>{const d=new Date(e.date); return d.getFullYear()===_cd.getFullYear()-1 && d.getMonth()===_cd.getMonth();});
 fillCards("paceCards",[
-  {k:"Verdict", v:VERDICT, col:VCOL, d:cur.tix+" sold · typical here is "+normNow+" · "+tgtAtNow+" needed for "+TARGET},
+  {k:"Verdict", v:VERDICT, col:VCOL, d:cur.tix+" sold · a typical event has "+normNow+" by now · the "+TARGET+" pace wants "+tgtAtNow},
   {k:"Sold · "+CUR_TAG, v:cur.tix+" / "+TARGET, col:"coral", d:inRoom+" in-room · "+zoomCur+" Zoom · "+gbp2(cur.gross)+" gross"},
   {k:"Days to go", n:daysToGo, col:"amber", d:CUR_DAY+", 7pm"},
   {k:"Projected finish", v:String(projected), col:projected>=TARGET?"green":projected>=avgFinal?"amber":"coral", d:"likely "+projLo+"–"+projHi+" · target "+TARGET+" · avg "+avgFinal},
@@ -422,8 +430,8 @@ fillCards("paceCards",[
     : VERDICT==="TOO EARLY"
     ? `<b>Too early to call.</b> ${cur.tix} of ${TARGET} sold, ${daysToGo} days out — a typical event has only ${normNow} by this point, so there is no meaningful signal yet.`
     : VERDICT==="ON TRACK"
-    ? `<b>On track for ${TARGET}.</b> ${cur.tix} sold with ${daysToGo} days to go, against the ${tgtAtNow} needed by today.`
-    : `<b>${VERDICT}</b> — ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. A typical event has ${normNow} by now; ${TARGET} needs ${tgtAtNow}${BC.length?`. Biggest blocker: ${BC[0].s}`:""}.`;
+    ? `<b>On track for ${TARGET}.</b> ${cur.tix} sold with ${daysToGo} days to go — the ${TARGET} pace wants ${tgtAtNow} by today, so you are ${cur.tix-tgtAtNow} ahead of it.`
+    : `<b>${VERDICT}</b> — ${cur.tix} of ${TARGET} sold, ${daysToGo} ${daysToGo===1?"day":"days"} to go. ${vsNormal}, and ${cur.tix>=tgtAtNow?"at":"behind"} the ${TARGET} pace, which wants ${tgtAtNow} by today. <b>${gapToTarget} still to sell</b> and ${Math.round(stillToCome)} typically arrive from here${BC.length?`. Biggest blocker: ${BC[0].s}`:""}.`;
   el.innerHTML = `
     <div class="rnHead">Right now · ${CUR_MONTH} ${new Date(cur.date).getFullYear()} · updated ${new Date(SNAPSHOT).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
     <div class="rnLine">${lead}</div>
@@ -471,8 +479,8 @@ const needRate = daysToGo > 0 ? (gapToTarget / daysToGo).toFixed(1) : "0";
 document.getElementById("paceFlag").innerHTML = gapToTarget === 0
   ? `<b>Mission hit.</b> ${cur.tix} of ${TARGET} sold with ${daysToGo} days still to go. Anything further is upside — switch the messaging to the waiting list and next month.`
   : diff >= 0
-  ? `<b>On track for ${TARGET}.</b> ${CUR_MONTH} is at <b>${cur.tix}</b>; ${tgtAtNow} is needed by today to finish on ${TARGET}, putting you ${diff} ahead. <b>${gapToTarget} still to sell</b> and typically ${Math.round(stillToCome)} arrive from here — keep the planned pushes running.`
-  : `<b>${Math.abs(diff)} short of the ${TARGET} line.</b> ${CUR_MONTH} is at <b>${cur.tix}</b>; hitting ${TARGET} needs ${tgtAtNow} by today. <b>${gapToTarget} still to sell in ${daysToGo} days</b> (${needRate}/day) versus the ${Math.round(stillToCome)} that typically arrive — that gap does not close on its own, so add a push beyond the plan.`;
+  ? `<b>On track for ${TARGET}.</b> ${CUR_MONTH} is at <b>${cur.tix}</b> — the ${TARGET} pace wants ${tgtAtNow} by today, so you are ${diff} ahead of it. <b>${gapToTarget} still to sell</b> and typically ${Math.round(stillToCome)} arrive from here — keep the planned pushes running.`
+  : `<b>${Math.abs(diff)} behind the ${TARGET} pace.</b> ${CUR_MONTH} is at <b>${cur.tix}</b>. ${vsNormal} — but the ${TARGET} pace wants ${tgtAtNow} by today (a checkpoint, not tickets outstanding). <b>${gapToTarget} still to sell in ${daysToGo} ${daysToGo===1?"day":"days"}</b> (${needRate}/day) versus the ${Math.round(stillToCome)} that typically arrive — so ${TARGET} needs an above-average close, not just the plan running.`;
 
 const paceChart = new Chart(document.getElementById("paceChart"),{
   type:"line",
@@ -491,7 +499,7 @@ const paceChart = new Chart(document.getElementById("paceChart"),{
 });
 
 const cps = [45,30,21,14,7,3,0];
-let cpRows = `<tr><th>Days out</th><th>Date</th><th class="num">Historic avg</th><th class="num">Target (${TARGET})</th><th class="num">Actual</th><th>Status</th></tr>`;
+let cpRows = `<tr><th>Days out</th><th>Date</th><th class="num">Historic avg</th><th class="num">${TARGET} pace — sold by then</th><th class="num">Actual</th><th>Status</th></tr>`;
 cps.forEach(d=>{
   const i = 60-d, dt = new Date(cur.date); dt.setDate(dt.getDate()-d);
   const avg = Math.round(avgCurve[i]), tgt = Math.round(targetCurve[i]);
@@ -502,7 +510,7 @@ cps.forEach(d=>{
   cpRows += `<tr><td>${d===0?"Event day":d+" days"}</td><td>${dt.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})}</td><td class="num">${avg}</td><td class="num">${tgt}</td><td class="num"><b>${actual}</b></td><td>${st}</td></tr>`;
 });
 document.getElementById("cpTable").innerHTML = cpRows;
-document.getElementById("cpNote").innerHTML = `<b>Target</b> = what must be sold by that date to still finish on ${TARGET}, based on how many tickets typically arrive after it. ON TRACK = at or above it · AT RISK = within 10% below · BEHIND = more than 10% below, which needs an extra push, not just the plan. <b>Historic avg</b> is where past events actually were, shown for context, not as the goal.`;
+document.getElementById("cpNote").innerHTML = `<b>${TARGET} pace</b> = the running total you need <i>by that date</i> to still finish on ${TARGET}, based on how many tickets typically arrive after it. It is a checkpoint, not tickets left to sell — tickets left to sell is always ${TARGET} minus what is sold. ON TRACK = at or above it · AT RISK = within 10% below · BEHIND = more than 10% below, which needs an extra push, not just the plan. <b>Historic avg</b> is where past events actually were, shown for context, not as the goal.`;
 
 // ---------- events tab ----------
 const tot = EVENTS.reduce((a,e)=>({tix:a.tix+e.tix,gross:a.gross+e.gross,net:a.net+e.net,orders:a.orders+e.orders}),{tix:0,gross:0,net:0,orders:0});
