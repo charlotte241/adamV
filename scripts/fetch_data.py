@@ -6,7 +6,7 @@ from eventbrite.com/platform/api-keys, stored as an encrypted repo secret).
 Emails are masked before anything is written, so data.json never contains
 personal email addresses.
 """
-import json, os, sys, time, calendar, collections
+import json, os, sys, time, calendar, collections, hashlib
 import datetime as dt
 import urllib.request, urllib.parse, urllib.error
 
@@ -50,6 +50,19 @@ def last_thursday(d):
     last = dt.date(d.year, d.month, calendar.monthrange(d.year, d.month)[1])
     return last - dt.timedelta(days=(last.weekday() - 3) % 7)
 
+def ident_hash(email, first, last):
+    """Stable, non-reversible person key.
+
+    Built from the REAL email before masking, so identity survives the masking
+    step and never depends on the ***2 collision suffix. Falls back to the name
+    when an order carries no email. Publishing the hash rather than the address
+    keeps the public data file free of any extra personal data.
+    """
+    key = (email or "").strip().lower()
+    if not key:
+        key = "name:" + " ".join(f"{first} {last}".split()).lower()
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+
 def mask(email):
     if "@" not in email:
         return email
@@ -63,7 +76,12 @@ def main():
     events = list(paged(f"/organizations/{org}/events/", "events",
                         order_by="start_asc", time_filter="all"))
     SINCE = dt.date(2022, 1, 1)          # 2019-2021 excluded (Covid era, free events)
-    rpm, manifest = [], []
+    # ...but those older meets still tell us whether a 2026 booker is genuinely
+    # new or an old face returning. We pull them for IDENTITY ONLY: no money, no
+    # tickets, nothing that reaches a chart. Keeps the pace maths on 2022+ while
+    # making "first ever visit" mean what it says.
+    IDENTITY_SINCE = dt.date(2019, 1, 1)
+    rpm, legacy, manifest = [], [], []
     for e in events:
         d = dt.date.fromisoformat(e["start"]["local"][:10])
         name = e["name"]["text"] or ""
@@ -74,6 +92,9 @@ def main():
         looks_like_rpm = "reading property meet" in nl or nl.startswith("rpm")
         if d < SINCE:
             reason = "before 2022"
+            if d >= IDENTITY_SINCE and (d == last_thursday(d) or looks_like_rpm):
+                legacy.append((e["id"], d.isoformat()))
+                reason = "before 2022 - identity only"
         elif not (d == last_thursday(d) or looks_like_rpm):
             reason = "not a monthly RPM"
         else:
@@ -163,11 +184,22 @@ def main():
                 "email": email,
                 "city": city,
                 "eid": eid, "edate": edate, "ename": ename,
+                "h": ident_hash(email, o.get("first_name"), o.get("last_name")),
                 "qty": qty, "zoom": zoom, "code": promo or aff,
                 "promo": promo, "aff": aff, "sp": 1 if sponsor else 0,
                 "status": "Free Order" if gross == 0 else "Eventbrite Completed",
                 "gross": round(gross, 2), "net": net,
             })
+    # ---- identity-only sweep of the 2019-2021 meets ----
+    prior = set()
+    for eid, edate in legacy:
+        for o in fetch_event_orders(eid):
+            if o.get("status") != "placed":
+                continue
+            prior.add(ident_hash((o.get("email") or "").strip().lower(),
+                                 o.get("first_name"), o.get("last_name")))
+    print(f"{len(legacy)} pre-2022 meets swept for identity: {len(prior)} people seen")
+
     orders.sort(key=lambda o: o["dt"])
     print(f"{len(orders)} orders, {sum(o['qty'] for o in orders)} tickets")
 
@@ -182,6 +214,8 @@ def main():
             o["email"] = mapping[o["email"]]
 
     out = {"snapshot": dt.datetime.utcnow().isoformat(timespec="minutes"),
+           "priorAudience": {"from": IDENTITY_SINCE.isoformat(), "to": "2021-12-31",
+                             "events": len(legacy), "ids": sorted(prior)},
            "sponsors": SPONSOR_DIRECTORY,
            "eventManifest": manifest,
            "orders": orders}
