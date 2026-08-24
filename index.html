@@ -164,6 +164,9 @@ footer{margin-top:40px;color:var(--muted);font-size:12.5px;border-top:1px solid 
   <div class="note">Cumulative tickets sold by order date, one line per year. Where the current year's line sits above last year's at the same point, RPM is ahead of last year's ticket sales.</div>
   <div class="panel chartbox short"><canvas id="cumTixChart"></canvas></div>
   <h2>Every Event — Performance Summary</h2>
+  <div class="note"><b>% new</b> = the share of that month's bookers who had never booked an RPM before.
+  Counted on named bookers, not tickets — an order covering a guest names only the buyer, so the guest cannot be classified.
+  History starts January 2022, so the 2022 events read artificially high and anyone returning after a pre-2022 gap counts as new.</div>
   <div class="panel scroll"><table id="evTable"></table></div>
 </section>
 
@@ -251,6 +254,32 @@ ORDERS.forEach(o=>{
   e.orders++; e.tix+=o.qty; e.gross+=o.gross; e.net+=o.net;
 });
 const EVENTS = Object.values(evMap).sort((a,b)=>a.date.localeCompare(b.date));
+
+// ---------- new vs returning ----------
+// A booker is "new" at an event if that email has never booked an earlier RPM.
+// Measured on named bookers, not tickets: an order covering a guest names only
+// the buyer, so the guest cannot be classified either way.
+// Identity = masked email (unique per real address); falls back to name if absent.
+// History starts Jan 2022, so anyone last seen pre-2022 counts as new.
+(() => {
+  const idOf = o => (o.email && o.email.trim())
+    ? "e:" + o.email.trim()
+    : "n:" + (o.first + " " + o.last).trim().toLowerCase();
+  const byEvent = {};
+  ORDERS.forEach(o => (byEvent[o.eid] ||= new Set()).add(idOf(o)));
+  const seen = new Set();
+  EVENTS.forEach(e => {
+    const bookers = byEvent[e.eid] || new Set();
+    let fresh = 0;
+    bookers.forEach(k => { if(!seen.has(k)) fresh++; });
+    bookers.forEach(k => seen.add(k));
+    e.bookers = bookers.size;
+    e.newBookers = fresh;
+    e.returning = bookers.size - fresh;
+    e.pctNew = bookers.size ? Math.round(100 * fresh / bookers.size) : null;
+  });
+})();
+
 const cur = evMap[CURRENT_EID];
 const hist = EVENTS.filter(e=>!EXCLUDE_FROM_PACE.has(e.eid));
 // dynamic labels
@@ -520,6 +549,13 @@ fillCards("evCards",[
   {k:"Gross revenue", v:gbp(tot.gross), col:"amber", d:"before Eventbrite fees"},
   {k:"Net revenue", v:gbp(tot.net), col:"green", d:"after fees"},
   {k:"Avg tickets / event", n:Math.round(tot.tix/EVENTS.length), col:"plum", d:"best month: "+Math.max(...EVENTS.map(e=>e.tix))+" tickets"},
+  (()=>{ // 2023+ only: 2022 has no prior history, so everyone there looks new
+    const E = EVENTS.filter(e=>e.date>="2023-01-01" && !EXCLUDE_FROM_PACE.has(e.eid));
+    const nw = E.reduce((s,e)=>s+e.newBookers,0), bk = E.reduce((s,e)=>s+e.bookers,0);
+    const ret = Math.round(bk===0?0:(bk-nw)/E.length);
+    return {k:"New bookers / event", v:(bk?Math.round(100*nw/bk):0)+"%", col:"steel",
+            d:"2023 onwards · "+E.length+" events · about "+ret+" returning each month"};
+  })(),
 ]);
 
 const evChart = new Chart(document.getElementById("evChart"),{
@@ -600,6 +636,9 @@ function renderTable(el, cols, rows, defaultSort, onRow){
 renderTable(document.getElementById("evTable"),
   [{k:"date",h:"Date",fmt:r=>fmtD(r.date)},{k:"name",h:"Event",fmt:r=>esc(shortName(r.name))},
    {k:"orders",h:"Orders",num:1},{k:"tix",h:"Tickets",num:1},
+   {k:"pctNew",h:"% new",num:1,fmt:r=>r.pctNew==null?"—":
+     `<b class="${r.pctNew>=45?"green":r.pctNew>=30?"amber":"coral"}">${r.pctNew}%</b>`},
+   {k:"newBookers",h:"New",num:1,fmt:r=>r.newBookers+" of "+r.bookers},
    {k:"gross",h:"Gross",num:1,fmt:r=>gbp2(r.gross)},{k:"net",h:"Net",num:1,fmt:r=>gbp2(r.net)},
    {k:"avg",h:"£/ticket",num:1,fmt:r=>gbp2(r.gross/Math.max(r.tix,1))}],
   EVENTS.map(e=>({...e, avg:e.gross/Math.max(e.tix,1)})), ["date","asc"], r=>openEvent(r.eid));
