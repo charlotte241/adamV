@@ -544,7 +544,7 @@ document.getElementById("cpNote").innerHTML = `<b>${TARGET} pace</b> = the runni
 // ---------- events tab ----------
 const tot = EVENTS.reduce((a,e)=>({tix:a.tix+e.tix,gross:a.gross+e.gross,net:a.net+e.net,orders:a.orders+e.orders}),{tix:0,gross:0,net:0,orders:0});
 fillCards("evCards",[
-  {k:"Monthly RPMs", n:EVENTS.length, col:"steel", d:"Mar 2025 → Aug 2026"},
+  {k:"Monthly RPMs", n:EVENTS.length, col:"steel", d:fmtD(EVENTS[0].date)+" → "+fmtD(EVENTS[EVENTS.length-1].date)},
   {k:"Tickets", n:tot.tix, col:"coral", d:tot.orders+" orders"},
   {k:"Gross revenue", v:gbp(tot.gross), col:"amber", d:"before Eventbrite fees"},
   {k:"Net revenue", v:gbp(tot.net), col:"green", d:"after fees"},
