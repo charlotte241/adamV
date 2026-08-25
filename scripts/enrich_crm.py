@@ -21,6 +21,7 @@ Deliberately NOT filled, because nothing available reaches 80%:
 A cell is only ever written when it is EMPTY. Anything a human typed wins.
 """
 import json, os, sys, time, re, hashlib, collections
+import datetime as dt
 import urllib.request
 
 TOKEN = os.environ.get("MONDAY_TOKEN", "").strip()
@@ -34,6 +35,17 @@ FULLNAME = "text_mm5b3my9"
 WEBSITE  = "link_mm5b1y5g"
 SOURCE   = "color_mm6h8m86"
 CITY     = "text_mm6jc0wa"
+EVLIST   = "text_mm6j6s45"     # Events attended (list)
+SPONSOR  = "boolean_mm6jztgt"  # Power Team sponsor
+BOUGHT   = "text_mm6j7dys"     # What they have bought
+
+# From the RPM Power Team directory. Matched on name, since sponsors book with
+# whatever address suits them on the night.
+SPONSOR_NAMES = {
+    "dean cripps","kate hulcoop-allen","katie hulcoop-allen","katie allen",
+    "martin bowers","sarah gillbe","des taylor","desmond taylor","emily temple",
+    "steve long","stuart stanley","jason povey","daniel norquoy","martin duncan",
+}
 
 FREE = {"gmail","googlemail","hotmail","outlook","live","yahoo","icloud","me","aol","msn",
         "btinternet","sky","virginmedia","protonmail","proton","mail","ymail","rocketmail",
@@ -104,8 +116,9 @@ def main():
     items, cursor = [], None
     while True:
         q = ('query($c:String){ boards(ids:[%s]){ items_page(limit:250, cursor:$c){ cursor '
-             'items { id name column_values(ids:["%s","%s","%s","%s","%s"]) { id text } } } } }'
-             ) % (BOARD, EMAIL, FULLNAME, WEBSITE, SOURCE, CITY)
+             'items { id name column_values(ids:["%s","%s","%s","%s","%s","%s","%s","%s"]) '
+             '{ id text } } } } }'
+             ) % (BOARD, EMAIL, FULLNAME, WEBSITE, SOURCE, CITY, EVLIST, SPONSOR, BOUGHT)
         page = api(q, {"c": cursor})["boards"][0]["items_page"]
         items.extend(page["items"])
         cursor = page.get("cursor")
@@ -144,6 +157,26 @@ def main():
                 filled["Town/City"] += 1
             elif not town:
                 skipped["no town on file"] += 1
+
+            if orders and not cv.get(EVLIST):
+                months = sorted({o["edate"] for o in orders})
+                pretty = ", ".join(dt.date.fromisoformat(m).strftime("%b %y") for m in months)
+                payload[EVLIST] = pretty[:250]
+                filled["Events attended (list)"] += 1
+
+            if orders and not cv.get(BOUGHT):
+                tix = sum(o["qty"] for o in orders)
+                spend = round(sum(o["gross"] for o in orders), 2)
+                payload[BOUGHT] = f"{tix} RPM ticket{'s' if tix != 1 else ''}, GBP {spend:.2f}"
+                filled["What they have bought"] += 1
+
+            nm = " ".join(f"{it['name']}".split()).lower()
+            if orders:
+                o0 = orders[0]
+                nm = " ".join(f"{(o0.get('first') or '')} {(o0.get('last') or '')}".split()).lower() or nm
+            if (nm in SPONSOR_NAMES or any(o.get("sp") for o in orders or [])) and not cv.get(SPONSOR):
+                payload[SPONSOR] = {"checked": "true"}
+                filled["Power Team sponsor"] += 1
 
             site = business_site(email)
             if site and not cv.get(WEBSITE):
