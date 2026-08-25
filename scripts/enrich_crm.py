@@ -42,6 +42,37 @@ LIFECYCLE= "color_mm6jmajt"   # Lifecycle
 GUESTS   = "numeric_mm6j6aw5"  # Guests brought
 HOWATT   = "color_mm6j5ydz"    # How they attend
 TRAVEL   = "color_mm6j1p5b"    # Travel
+EARLY    = "color_mm6jse3v"    # Books how early
+AVGLEAD  = "numeric_mm6jxmgs"  # Avg days before booking
+PREDICT  = "color_mm6jvxjq"    # How predictable
+BOOKHIST = "long_text_mm6jtm2j" # Booking history
+USUALTIX = "color_mm6jzwz1"    # Usual ticket
+
+def booking_window(avg):
+    if avg >= 30: return "A month or more"
+    if avg >= 14: return "Two to four weeks"
+    if avg >= 5:  return "About a week"
+    if avg >= 1:  return "Last few days"
+    return "Same day"
+
+def spread(leads):
+    """Population standard deviation, without importing statistics."""
+    if len(leads) < 2: return None
+    m = sum(leads) / len(leads)
+    return (sum((x - m) ** 2 for x in leads) / len(leads)) ** 0.5
+
+def ticket_kind(names):
+    """Collapse Eventbrite ticket names into something worth filtering on."""
+    kinds = set()
+    for n in names:
+        s = (n or "").lower()
+        if not s: continue
+        if any(w in s for w in ("zoom", "online", "virtual", "livestream")): kinds.add("Zoom")
+        elif "early" in s: kinds.add("Early bird")
+        elif any(w in s for w in ("free", "comp", "guest", "speaker")): kinds.add("Free or comp")
+        else: kinds.add("Standard")
+    if not kinds: return None
+    return kinds.pop() if len(kinds) == 1 else "Mixed"
 
 # Reading and the villages people can reach without a real journey.
 LOCAL = {"reading","wokingham","bracknell","earley","caversham","tilehurst","woodley",
@@ -145,10 +176,11 @@ def main():
     items, cursor = [], None
     while True:
         q = ('query($c:String){ boards(ids:[%s]){ items_page(limit:250, cursor:$c){ cursor '
-             'items { id name column_values(ids:["%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"]) '
+             'items { id name column_values(ids:["%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"]) '
              '{ id text } } } } }'
              ) % (BOARD, EMAIL, FULLNAME, WEBSITE, SOURCE, CITY, EVLIST, SPONSOR, BOUGHT,
-                        LIFECYCLE, GUESTS, HOWATT, TRAVEL)
+                        LIFECYCLE, GUESTS, HOWATT, TRAVEL,
+                        EARLY, AVGLEAD, PREDICT, BOOKHIST, USUALTIX)
         page = api(q, {"c": cursor})["boards"][0]["items_page"]
         items.extend(page["items"])
         cursor = page.get("cursor")
@@ -238,6 +270,47 @@ def main():
                 if cv.get(TRAVEL) != trv:
                     payload[TRAVEL] = {"label": trv}
                     filled["Travel"] += 1
+
+                # --- booking behaviour ---
+                leads, hist, names = [], [], []
+                for o in sorted(orders, key=lambda x: x["dt"]):
+                    ev = dt.date.fromisoformat(o["edate"])
+                    bought = dt.date.fromisoformat(o["dt"][:10])
+                    d = (ev - bought).days
+                    if d < 0:
+                        continue
+                    leads.append(d)
+                    names.append(o.get("tc", ""))
+                    hist.append(f"{ev.strftime('%b %y')}: {d}d ahead, GBP {o['gross']:.0f}")
+
+                if leads:
+                    avg = round(sum(leads) / len(leads))
+                    if str(avg) != (cv.get(AVGLEAD) or "").replace(",", ""):
+                        payload[AVGLEAD] = str(avg)
+                        filled["Avg days before booking"] += 1
+
+                    win = booking_window(avg) if len(leads) > 1 else "Only booked once"
+                    if cv.get(EARLY) != win:
+                        payload[EARLY] = {"label": win}
+                        filled["Books how early"] += 1
+
+                    sd = spread(leads)
+                    pred = ("Only one booking" if sd is None
+                            else "Predictable" if sd < 7
+                            else "Fairly steady" if sd < 14 else "Varies a lot")
+                    if cv.get(PREDICT) != pred:
+                        payload[PREDICT] = {"label": pred}
+                        filled["How predictable"] += 1
+
+                    line = " · ".join(hist)[:1900]
+                    if cv.get(BOOKHIST) != line:
+                        payload[BOOKHIST] = line
+                        filled["Booking history"] += 1
+
+                    kind = ticket_kind(names)
+                    if kind and cv.get(USUALTIX) != kind:
+                        payload[USUALTIX] = {"label": kind}
+                        filled["Usual ticket"] += 1
 
             site = business_site(email)
             if site and not cv.get(WEBSITE):
