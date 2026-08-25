@@ -160,8 +160,12 @@ def main():
             att = [a for a in (o.get("attendees") or []) if not a.get("cancelled")]
             qty = len(att) or 1
             city, zoom, promo, aff = "", 0, "", ""
+            classes = []
             for a in att:
-                tc = (a.get("ticket_class_name") or "").lower()
+                tcn = a.get("ticket_class_name") or ""
+                if tcn:
+                    classes.append(tcn)
+                tc = tcn.lower()
                 if any(w in tc for w in ZOOM_WORDS):
                     zoom += 1
                 if not promo:
@@ -187,6 +191,7 @@ def main():
                 "h": ident_hash(email, o.get("first_name"), o.get("last_name")),
                 "qty": qty, "zoom": zoom, "code": promo or aff,
                 "promo": promo, "aff": aff, "sp": 1 if sponsor else 0,
+                "tc": "; ".join(sorted(set(classes)))[:80],
                 "status": "Free Order" if gross == 0 else "Eventbrite Completed",
                 "gross": round(gross, 2), "net": net,
             })
