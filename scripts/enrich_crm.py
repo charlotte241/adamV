@@ -38,6 +38,35 @@ CITY     = "text_mm6jc0wa"
 EVLIST   = "text_mm6j6s45"     # Events attended (list)
 SPONSOR  = "boolean_mm6jztgt"  # Power Team sponsor
 BOUGHT   = "text_mm6j7dys"     # What they have bought
+LIFECYCLE= "color_mm6jmajt"   # Lifecycle
+GUESTS   = "numeric_mm6j6aw5"  # Guests brought
+HOWATT   = "color_mm6j5ydz"    # How they attend
+TRAVEL   = "color_mm6j1p5b"    # Travel
+
+# Reading and the villages people can reach without a real journey.
+LOCAL = {"reading","wokingham","bracknell","earley","caversham","tilehurst","woodley",
+         "winnersh","twyford","sonning","shinfield","theale","pangbourne","burghfield","calcot"}
+
+def lifecycle(n, rec, has_future):
+    """One box per person. rec is months since their last visit.
+
+    Regular splits at 3 months so a quiet regular is visible before they are lost;
+    Slipping starts at 6 months, which is the line Charlotte set.
+    """
+    if n == 0:
+        return "Booked, not been yet" if has_future else "Never been"
+    if n >= 5:
+        if rec <= 3:  return "Regular"
+        if rec <= 6:  return "Regular - but quiet"
+        if rec <= 12: return "Slipping"
+        return "Lost regular"
+    if n == 1:
+        if rec <= 2:  return "Just arrived"
+        if rec <= 12: return "Came once, drifted"
+        return "Cold - came once"
+    if rec <= 2:  return "In and out"
+    if rec <= 12: return "Gave up after a few"
+    return "Cold - tried a few"
 
 # From the RPM Power Team directory. Matched on name, since sponsors book with
 # whatever address suits them on the night.
@@ -116,9 +145,10 @@ def main():
     items, cursor = [], None
     while True:
         q = ('query($c:String){ boards(ids:[%s]){ items_page(limit:250, cursor:$c){ cursor '
-             'items { id name column_values(ids:["%s","%s","%s","%s","%s","%s","%s","%s"]) '
+             'items { id name column_values(ids:["%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"]) '
              '{ id text } } } } }'
-             ) % (BOARD, EMAIL, FULLNAME, WEBSITE, SOURCE, CITY, EVLIST, SPONSOR, BOUGHT)
+             ) % (BOARD, EMAIL, FULLNAME, WEBSITE, SOURCE, CITY, EVLIST, SPONSOR, BOUGHT,
+                        LIFECYCLE, GUESTS, HOWATT, TRAVEL)
         page = api(q, {"c": cursor})["boards"][0]["items_page"]
         items.extend(page["items"])
         cursor = page.get("cursor")
@@ -177,6 +207,37 @@ def main():
             if (nm in SPONSOR_NAMES or any(o.get("sp") for o in orders or [])) and not cv.get(SPONSOR):
                 payload[SPONSOR] = {"checked": "true"}
                 filled["Power Team sponsor"] += 1
+
+            if orders:
+                evd = sorted({o["edate"] for o in orders})
+                today = dt.date.today().isoformat()
+                past = [e for e in evd if e <= today]
+                fut = [e for e in evd if e > today]
+                rec = ((dt.date.today() - dt.date.fromisoformat(past[-1])).days / 30.44
+                       if past else 999)
+                lc = lifecycle(len(past), rec, bool(fut))
+                if cv.get(LIFECYCLE) != lc:
+                    payload[LIFECYCLE] = {"label": lc}
+                    filled["Lifecycle"] += 1
+
+                extra = sum(max(0, o["qty"] - 1) for o in orders)
+                if str(extra) != (cv.get(GUESTS) or "").replace(",", ""):
+                    payload[GUESTS] = str(extra)
+                    filled["Guests brought"] += 1
+
+                z = sum(o["zoom"] for o in orders)
+                tix = sum(o["qty"] for o in orders)
+                how = "Zoom only" if z and z == tix else "Both" if z else "In the room"
+                if cv.get(HOWATT) != how:
+                    payload[HOWATT] = {"label": how}
+                    filled["How they attend"] += 1
+
+                twn = (cities.get(h) or "").strip().lower()
+                trv = ("Town unknown" if not twn
+                       else "Local to Reading" if twn in LOCAL else "Travels in")
+                if cv.get(TRAVEL) != trv:
+                    payload[TRAVEL] = {"label": trv}
+                    filled["Travel"] += 1
 
             site = business_site(email)
             if site and not cv.get(WEBSITE):
