@@ -11,7 +11,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
 
@@ -34,6 +34,11 @@ jobs:
         env:
           MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
         run: python3 scripts/enrich_crm.py
+
+      - name: Fill the per-event grid
+        env:
+          MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
+        run: python3 scripts/fill_event_grid.py
 
       - name: Flag duplicate people on the CRM board
         env:
