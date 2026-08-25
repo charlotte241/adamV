@@ -1,0 +1,33 @@
+name: Merge duplicate people
+
+# Never runs on a schedule. Someone has to press the button, and the
+# default is a dry run that reports what it would do without touching
+# the board.
+
+on:
+  workflow_dispatch:
+    inputs:
+      write:
+        description: 'Actually merge? Leave as no for a dry run.'
+        required: true
+        default: 'no'
+        type: choice
+        options: ['no', 'yes']
+      skip:
+        description: 'Item ids to leave alone, comma separated'
+        required: false
+        default: ''
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Merge duplicate people on the CRM board
+        env:
+          MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
+          MERGE_WRITE: ${{ inputs.write == 'yes' && '1' || '0' }}
+          MERGE_SKIP: ${{ inputs.skip }}
+        run: python3 scripts/merge_people.py
