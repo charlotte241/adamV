@@ -25,6 +25,12 @@ jobs:
           MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
         run: python3 scripts/fetch_plan.py
 
+      - name: Add any ticket buyer missing from the board
+        env:
+          EVENTBRITE_TOKEN: ${{ secrets.EVENTBRITE_TOKEN }}
+          MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
+        run: python3 scripts/add_new_people.py
+
       - name: Sync attendance onto the CRM board
         env:
           MONDAY_TOKEN: ${{ secrets.MONDAY_TOKEN }}
