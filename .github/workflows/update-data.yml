@@ -8,6 +8,12 @@ on:
 permissions:
   contents: write
 
+# Only one refresh at a time. Two overlapping runs both try to push to main
+# and the slower one is rejected, which is what produced the failure emails.
+concurrency:
+  group: rpm-update-data
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -57,4 +63,21 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add data.json
           git add plan.json 2>/dev/null || true
-          git diff --cached --quiet || (git commit -m "Data refresh $(date -u '+%Y-%m-%d %H:%M')" && git push)
+          if git diff --cached --quiet; then
+            echo "nothing changed - nothing to push"
+            exit 0
+          fi
+          git commit -m "Data refresh $(date -u '+%Y-%m-%d %H:%M')"
+          # The run takes 15-50 minutes, so main has often moved on by now
+          # (a Pages build, a web edit, or another run). Rebase onto whatever
+          # is there and try again rather than failing and emailing Charlotte.
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin main; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push attempt $attempt was rejected - retrying in 15s"
+            sleep 15
+          done
+          echo "::warning::Data refresh could not be pushed after 5 attempts. The board was still updated; only data.json is stale."
+          exit 0
