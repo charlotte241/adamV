@@ -159,6 +159,21 @@ def main():
             net = round(gross - mv("eventbrite_fee") - mv("payment_fee") - mv("tax"), 2)
             att = [a for a in (o.get("attendees") or []) if not a.get("cancelled")]
             qty = len(att) or 1
+            # The Organizer app writes checked_in onto each attendee record, so
+            # this is the difference between a ticket sold and a person who
+            # actually walked in. Read-only over the public API, which is all we
+            # need. Without it every "times attended" figure is really "times
+            # bought", and a no-show is indistinguishable from an attendee.
+            ci = sum(1 for a in att if a.get("checked_in"))
+            # Does any seat on this order carry a name of its own, different from
+            # the buyer? If so, guests are not anonymous after all and we can name
+            # them. Only the COUNT is published - a guest's name never enters this
+            # public repository. add_new_people.py reads the real names from the
+            # API at run time and writes them straight to monday.
+            _buyer = f"{(o.get('first_name') or '').strip()} {(o.get('last_name') or '').strip()}".strip().lower()
+            ng = sum(1 for a in att
+                     if ((a.get("profile") or {}).get("name") or "").strip().lower()
+                     not in ("", _buyer))
             city, zoom, promo, aff = "", 0, "", ""
             classes = []
             for a in att:
@@ -189,7 +204,8 @@ def main():
                 "city": city,
                 "eid": eid, "edate": edate, "ename": ename,
                 "h": ident_hash(email, o.get("first_name"), o.get("last_name")),
-                "qty": qty, "zoom": zoom, "code": promo or aff,
+                "qty": qty, "ci": ci, "ng": ng,
+                "zoom": zoom, "code": promo or aff,
                 "promo": promo, "aff": aff, "sp": 1 if sponsor else 0,
                 "tc": "; ".join(sorted(set(classes)))[:80],
                 "status": "Free Order" if gross == 0 else "Eventbrite Completed",
