@@ -221,7 +221,29 @@ try {
   document.body.innerHTML = '<div style="padding:60px;text-align:center;font-family:sans-serif;color:#f2f0fa">Could not load data.json — this page must be viewed on the hosted site.</div>';
   throw e;
 }
-const ORDERS = DATA.orders;
+// One Meet = one date. Eventbrite holds some Meets on two listings (the main one and the
+// "Final 2 Events" bundle), and a 2-event ticket "(Oct/Nov)" covers both Meets whichever
+// listing it was bought on. So every order is keyed by its Meet date, and each 2-event
+// ticket also gets a place on its other Meet (its money is counted once, where it was bought).
+const ORDERS = (() => {
+  const RAW = DATA.orders, MON = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+  const dates = [...new Set(RAW.map(o=>o.edate))].sort();
+  const nameOf = {}, best = {};
+  RAW.forEach(o=>{ const k=o.edate+"|"+o.ename; best[k]=(best[k]||0)+o.qty;
+    if(!nameOf[o.edate] || best[k] > best[o.edate+"|"+nameOf[o.edate]]) nameOf[o.edate]=o.ename; });
+  const out = [];
+  RAW.forEach(o=>{
+    const base = {...o, listing:o.eid, eid:"m"+o.edate, ename:nameOf[o.edate]};
+    out.push(base);
+    const m = /2 Events \((\w{3})\/(\w{3})\)/i.exec(o.tc||"");
+    if(!m) return;
+    [m[1],m[2]].map(x=>MON.indexOf(x.toLowerCase())+1).forEach(mo=>{
+      const d = dates.find(d=>d!==o.edate && d.slice(0,4)===o.edate.slice(0,4) && +d.slice(5,7)===mo);
+      if(d) out.push({...base, eid:"m"+d, edate:d, ename:nameOf[d], gross:0, net:0, _copy:true});
+    });
+  });
+  return out;
+})();
 const SNAPSHOT = DATA.snapshot;
 // the monday.com plan, shared by the Right Now band and the weekly panel
 let PLAN = null;
@@ -576,6 +598,7 @@ const evChart = new Chart(document.getElementById("evChart"),{
 function cumRace(canvasId, valOf, fmtVal, yTitle, yTick){
   const byYear = {};
   ORDERS.forEach(o=>{
+    if(o._copy) return;   // a 2-event ticket is one sale, even though it holds a place at two Meets
     const d = new Date(o.dt.replace(" ","T"));
     const doy = Math.floor((d - new Date(d.getFullYear(),0,1))/864e5);
     (byYear[d.getFullYear()] ||= Array(366).fill(0))[Math.min(doy,365)] += valOf(o);
